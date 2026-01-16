@@ -41,10 +41,10 @@ function Segmented({ value, options, onChange }: TriToggleProps) {
       {options.map((o) => (
         <Button
           key={o.key}
-          variant={value === o.key ? "default" : "outline"}
           size="sm"
-          onClick={() => onChange(o.key)}
+          variant={value === o.key ? "default" : "outline"}
           className="rounded-full"
+          onClick={() => onChange(o.key)}
         >
           {o.label}
         </Button>
@@ -53,17 +53,17 @@ function Segmented({ value, options, onChange }: TriToggleProps) {
   );
 }
 
+function kv(label: string, value?: string) {
+  if (!value) return "";
+  return `${label}: ${value}`;
+}
+
 function Pill({ children }: { children: React.ReactNode }) {
   return <span className="inline-flex items-center rounded-full border px-2 py-0.5 text-xs text-slate-700">{children}</span>;
 }
 
-function kv(label: string, value: string | number | undefined | null) {
-  if (value === undefined || value === null || value === "") return "";
-  return `${label}: ${value}`;
-}
-
-function joinNice(arr: string[]) {
-  return arr.filter(Boolean).join(", ");
+function toggleInArray<T>(arr: T[], item: T): T[] {
+  return arr.includes(item) ? arr.filter((x) => x !== item) : [...arr, item];
 }
 
 // -----------------------------
@@ -74,7 +74,6 @@ type ModalityMode = "CT" | "MR" | "CTMR";
 type BrainFlow = "TRAUMA" | "HEMORRHAGE" | "MASS_INF";
 
 type CTPreset = "NCCT" | "CECT" | "CTA" | "CTV" | "CTP";
-
 
 type MRIContrast = "NO" | "YES";
 
@@ -99,6 +98,18 @@ type BrainRegion =
 type ExtraAxialLocation = "Convexity" | "Falx" | "Tentorium" | "Skull base" | "Diffuse";
 type Side = "R" | "L" | "Bilateral" | "Midline";
 
+// CVST (dural venous sinus thrombosis)
+type VenousSinus =
+  | "Superior sagittal sinus"
+  | "Straight sinus"
+  | "Transverse sinus"
+  | "Sigmoid sinus"
+  | "Internal jugular vein"
+  | "Deep venous system"
+  | "Cortical veins";
+type CVSTOcclusion = "Partial" | "Complete";
+type CVSTLaterality = "R" | "L" | "Bilateral" | "Midline";
+
 // -----------------------------
 // Main Page
 // -----------------------------
@@ -117,11 +128,11 @@ export default function Page() {
   const [ctxFeverSepsis, setCtxFeverSepsis] = useState<boolean>(false);
   const [ctxImmunosupp, setCtxImmunosupp] = useState<boolean>(false);
 
+  // CVST suspicion (e.g., headache/papilledema, postpartum/OCP, hypercoagulable state)
+  const [ctxCVSTSusp, setCtxCVSTSusp] = useState<boolean>(false);
+
   // CT protocol (brain)
-
-
   const [ctPreset, setCtPreset] = useState<CTPreset>("NCCT");
-
   const [ctNeckCTA, setCtNeckCTA] = useState<boolean>(false); // head+neck CTA toggle
 
   // MR protocol (brain)
@@ -136,7 +147,6 @@ export default function Page() {
   // -------------------------
   const [traumaSkullFx, setTraumaSkullFx] = useState<boolean>(false);
   const [traumaBasilarFx, setTraumaBasilarFx] = useState<boolean>(false);
-  const [traumaVascularSusp, setTraumaVascularSusp] = useState<boolean>(false);
   const [traumaDAI, setTraumaDAI] = useState<boolean>(false);
   const [traumaContusion, setTraumaContusion] = useState<boolean>(true);
   const [traumaPneumocephalus, setTraumaPneumocephalus] = useState<boolean>(false);
@@ -148,24 +158,24 @@ export default function Page() {
   const [hemType, setHemType] = useState<BrainHemType>("INTRAAXIAL");
   const [extraSubtype, setExtraSubtype] = useState<ExtraAxialSubtype>("SDH");
   const [intraSubtype, setIntraSubtype] = useState<IntraAxialSubtype>("ICH");
-
   const [hemSide, setHemSide] = useState<Side>("R");
   const [hemRegion, setHemRegion] = useState<BrainRegion>("Temporal");
   const [extraLoc, setExtraLoc] = useState<ExtraAxialLocation>("Convexity");
 
-  const [thicknessMm, setThicknessMm] = useState<string>(""); // extraaxial thickness
-  const [midlineShiftMm, setMidlineShiftMm] = useState<string>("");
-  const [maxDiamCm, setMaxDiamCm] = useState<string>(""); // hematoma/lesion max diameter
+  const [thicknessMm, setThicknessMm] = useState<string>(""); // for SDH/EDH thickness
+  const [midlineShiftMm, setMidlineShiftMm] = useState<string>(""); // MLS
+  const [maxDiamCm, setMaxDiamCm] = useState<string>(""); // for ICH/contusion max diameter
 
-  // Intra-parenchymal hematoma quick volume estimate (ABC/2; cm)
+  // ABC/2 volume (optional)
   const [abcAcm, setAbcAcm] = useState<string>("");
   const [abcBcm, setAbcBcm] = useState<string>("");
   const [abcCcm, setAbcCcm] = useState<string>("");
+
   const abcVolumeMl = useMemo(() => {
-    const A = parseFloat(abcAcm);
-    const B = parseFloat(abcBcm);
-    const C = parseFloat(abcCcm);
-    if (!Number.isFinite(A) || !Number.isFinite(B) || !Number.isFinite(C)) return "";
+    const A = Number(abcAcm);
+    const B = Number(abcBcm);
+    const C = Number(abcCcm);
+    if (!A || !B || !C) return "";
     const vol = (A * B * C) / 2; // cm^3 ~ mL
     if (!Number.isFinite(vol)) return "";
     return vol.toFixed(1);
@@ -174,8 +184,20 @@ export default function Page() {
   const [hasIVHExt, setHasIVHExt] = useState<boolean>(false);
   const [hasSAHExt, setHasSAHExt] = useState<boolean>(false);
 
-  // Hemorrhage “age / signal” (quick tags – user asked earlier for mildly hyper etc; keep generic here)
+  // Hemorrhage “age / signal”
   const [bloodAgeHint, setBloodAgeHint] = useState<string>(""); // optional free text
+
+  // -------------------------
+  // CVST (dural venous sinus thrombosis) detail (CTV/MRV)
+  // -------------------------
+  const [cvstSinuses, setCvstSinuses] = useState<VenousSinus[]>(["Superior sagittal sinus"]);
+  const [cvstLaterality, setCvstLaterality] = useState<CVSTLaterality>("Midline");
+  const [cvstOcclusion, setCvstOcclusion] = useState<CVSTOcclusion>("Partial");
+  const [cvstCorticalVeinInvolvement, setCvstCorticalVeinInvolvement] = useState<boolean>(false);
+  const [cvstVenousInfarct, setCvstVenousInfarct] = useState<boolean>(false);
+  const [cvstHemorrhagicVenousInfarct, setCvstHemorrhagicVenousInfarct] = useState<boolean>(false);
+  const [cvstHintDenseSinus, setCvstHintDenseSinus] = useState<boolean>(false);
+  const [cvstHintEmptyDelta, setCvstHintEmptyDelta] = useState<boolean>(false);
 
   // -------------------------
   // Mass / Infection sub-selections
@@ -208,123 +230,6 @@ export default function Page() {
 
   const meningiomaHigh = meningiomaScore >= 3;
   const lymphomaHigh = lymphomaScore >= 3;
-
-  // -------------------------
-  // Protocol assistant (suggest & one-click apply)
-  // Goal: If user chooses a flow, auto-suggest the most useful add-ons
-  // (CTA/CTV/CTP, MR contrast, DWI/SWI/perfusion) without forcing it.
-  // -------------------------
-  const protocolAssistant = useMemo(() => {
-    const tips: { title: string; why: string; actions?: { label: string; apply: () => void }[] }[] = [];
-
-    // Helper actions (safe: only adjust relevant toggles)
-    const actions: { label: string; apply: () => void }[] = [];
-
-    // MASS/INF + MR present: DWI & SWI are core sequences; contrast is usually helpful when feasible.
-    if ((mode === "MR" || mode === "CTMR") && flow === "MASS_INF") {
-      if (!mrDWI) actions.push({ label: "DWI/ADC'yi aç", apply: () => setMrDWI(true) });
-      if (!mrSWI) actions.push({ label: "SWI/T2*'yi aç", apply: () => setMrSWI(true) });
-      if (mrContrast !== "YES") actions.push({ label: "MR kontrastı aç", apply: () => setMrContrast("YES") });
-    }
-
-    // CTA suggestions (selected scenarios)
-    if ((mode === "CT" || mode === "CTMR") && (flow === "TRAUMA" || flow === "HEMORRHAGE")) {
-      // Trauma with basilar fx / suspected vascular injury
-      if (flow === "TRAUMA" && (traumaBasilarFx || traumaVascularSusp)) {
-        if (ctPreset !== "CTA") {
-          actions.push({ label: "BT preset → CTA", apply: () => setCtPreset("CTA") });
-        }
-        if (!ctNeckCTA) actions.push({ label: "CTA head+neck'i aç", apply: () => setCtNeckCTA(true) });
-        tips.push({
-          title: "Travmada vasküler yaralanma şüphesi",
-          why: "Baziler fraktür veya vasküler yaralanma şüphesinde seçilmiş olguda CTA (gerekirse head+neck) ile değerlendirme düşünülebilir.",
-        });
-      }
-      // Non-traumatic SAH: CTA for aneurysm screen
-      const sahSelected =
-        (flow === "HEMORRHAGE" && ((hemType === "EXTRAAXIAL" && extraSubtype === "SAH") || (hemType === "INTRAAXIAL" && intraSubtype === "SAH")));
-      if (sahSelected && !ctxTraumaHx) {
-        if (ctPreset !== "CTA") {
-          actions.push({ label: "BT preset → CTA", apply: () => setCtPreset("CTA") });
-        }
-        tips.push({
-          title: "Non-travmatik SAH: anevrizma şüphesi",
-          why: "Travma öyküsü yoksa SAH paterni anevrizmal etyoloji açısından önemlidir; uygun olguda CTA ile tarama düşünülebilir.",
-        });
-      }
-      // Venous sinus thrombosis suspicion isn't explicitly modeled yet; CTV can be toggled manually.
-    }
-
-    // MASS/INF on CT-only: if NCCT, suggest CECT; also suggest adding MR.
-    if (flow === "MASS_INF" && mode === "CT") {
-      if (ctPreset === "NCCT") {
-        actions.push({ label: "BT preset → CECT", apply: () => setCtPreset("CECT") });
-      }
-      tips.push({
-        title: "Kitle/Enfeksiyon: CECT + MR önerisi",
-        why: "BT'de NCCT sınırlı kalabilir; mümkünse kontrastlı BT (CECT) ve ek olarak MR (kontrast + DWI/SWI, seçilmiş olguda ± perfüzyon) ayırıcı tanıya güçlü katkı sağlar.",
-        actions: [
-          {
-            label: "Mod → BT+MR",
-            apply: () => {
-              setMode("CTMR");
-              // keep CT choice; ensure core MR toggles are enabled for MASS/INF
-              setMrContrast("YES");
-              setMrDWI(true);
-              setMrSWI(true);
-            },
-          },
-        ],
-      });
-    }
-
-    // Perfusion suggestions (selected tumor scenarios; not mandatory)
-    if ((mode === "MR" || mode === "CTMR") && flow === "MASS_INF") {
-      if (!mrPerfusion) {
-        tips.push({
-          title: "Seçilmiş tümör olgularında perfüzyon",
-          why: "Yüksek dereceli glial tümör, nüks/psödoprogresyon ayrımı gibi senaryolarda yardımcı olabilir.",
-          actions: [{ label: "MR perfüzyon'u aç", apply: () => setMrPerfusion(true) }],
-        });
-      }
-    }
-
-    // Attach actions if we collected any
-    if (actions.length) {
-      tips.unshift({
-        title: "Protokol asistanı",
-        why: "Seçili akış ve klinik bağlama göre en sık kullanılan ek protokol/sekans önerileri.",
-        actions,
-      });
-    }
-
-    return tips.slice(0, 3);
-  }, [
-    mode,
-    flow,
-    mrDWI,
-    mrContrast,
-    mrSWI,
-    mrPerfusion,
-    hemorrhagicComponent,
-    traumaDAI,
-    ctPreset,
-    ctNeckCTA,
-    traumaBasilarFx,
-    traumaVascularSusp,
-    ctxTraumaHx,
-    hemType,
-    extraSubtype,
-    intraSubtype,
-  ]);
-
-  const applyAllProtocolAssistantActions = () => {
-    for (const tip of protocolAssistant) {
-      if (tip.actions?.length) {
-        for (const a of tip.actions) a.apply();
-      }
-    }
-  };
 
   // Free text
   const [incidental, setIncidental] = useState<string>("");
@@ -364,12 +269,22 @@ export default function Page() {
     if (ctxKnownCancer) tags.push("Bilinen malignite");
     if (ctxFeverSepsis) tags.push("Ateş/sepsis");
     if (ctxImmunosupp) tags.push("İmmünsüpresyon");
+    if (ctxCVSTSusp) tags.push("CVST şüphesi");
     return tags;
-  }, [ctxTraumaHx, ctxAnticoag, ctxKnownCancer, ctxFeverSepsis, ctxImmunosupp]);
+  }, [ctxTraumaHx, ctxAnticoag, ctxKnownCancer, ctxFeverSepsis, ctxImmunosupp, ctxCVSTSusp]);
 
   // DDX + recommendations
   const ddx = useMemo(() => {
     let items: { title: string; why: string[]; level: "Yüksek" | "Orta" | "Düşük" }[] = [];
+
+    // CVST can coexist with hemorrhage/venous infarct; treat as parallel track
+    if (ctxCVSTSusp) {
+      const why: string[] = ["Klinik olarak CVST şüphesi"];
+      if (mode === "CT" || mode === "CTMR") why.push("CTV ile değerlendirme planı");
+      if (mode === "MR" || mode === "CTMR") why.push("MR (gerekirse MRV) ile değerlendirme");
+      const level: "Yüksek" | "Orta" | "Düşük" = (mode === "CT" || mode === "CTMR") && ctPreset === "CTV" ? "Yüksek" : "Orta";
+      items.push({ title: "Dural venöz sinüs trombozu (CVST)", why, level });
+    }
 
     if (flow === "HEMORRHAGE") {
       const why: string[] = [];
@@ -394,9 +309,6 @@ export default function Page() {
       } else {
         if (intraSubtype === "ICH") {
           items.push({ title: "İntraparenkimal hematom", why: [...why, "İntraaksiyel kanama paterni"], level: "Yüksek" });
-          if ((mode === "CT" || mode === "CTMR") && (ctPreset === "CTA" || ctPreset === "CECT")) {
-            items.push({ title: "Hematoma genişleme riski (spot sign vb.)", why: ["CTA/kontrastlı BT bazı senaryolarda risk belirteci olabilir"], level: "Düşük" });
-          }
         } else if (intraSubtype === "HEM_CONTUSION") {
           items.push({ title: "Hemorajik kontüzyon", why: [...why, "Travma ile ilişkili intraaksiyel kanama"], level: ctxTraumaHx ? "Yüksek" : "Orta" });
         } else if (intraSubtype === "SAH") {
@@ -410,141 +322,107 @@ export default function Page() {
     if (flow === "TRAUMA") {
       const why: string[] = [];
       if (ctxTraumaHx) why.push("Travma öyküsü");
-      if (mode === "CT" || mode === "CTMR") why.push("Akut travmada non-kontrast BT temel tarama");
-      if (traumaSkullFx) why.push("Kafatası fraktürü bulgusu/şüphesi");
+      if (traumaSkullFx) why.push("Kafatası fraktürü şüphesi");
       if (traumaBasilarFx) why.push("Baziler fraktür şüphesi");
-      if (traumaDAI) why.push("DAI şüphesi (MR/SWI faydalı)");
-
-      items.push({ title: "Travmatik beyin hasarı spektrumu", why, level: "Yüksek" });
-      if (traumaDAI && (mode === "MR" || mode === "CTMR")) {
-        items.push({ title: "Diffüz aksonal yaralanma", why: ["MR (özellikle SWI) ile daha iyi"], level: "Orta" });
-      }
-      if (ctPreset === "CTA" && (traumaBasilarFx || traumaVascularSusp || ctNeckCTA)) {
-        items.push({ title: "Travmatik vasküler yaralanma (seçilmiş olguda)", why: ["CTA ile değerlendirme düşünülebilir"], level: "Düşük" });
-      }
+      if (traumaDAI) why.push("DAI şüphesi");
+      if (traumaContusion) why.push("Kontüzyon paterni");
+      if (why.length) items.push({ title: "Travmatik beyin hasarı", why, level: "Orta" });
     }
 
     if (flow === "MASS_INF") {
-      // core reasoning
       const whyBase: string[] = [];
       if (ctxKnownCancer) whyBase.push("Bilinen malignite");
       if (ctxFeverSepsis) whyBase.push("Ateş/sepsis");
       if (ctxImmunosupp) whyBase.push("İmmünsüpresyon");
-      if (mode === "MR" || mode === "CTMR") whyBase.push("MR kitle/enfeksiyonda daha duyarlı");
-      if (mrContrast === "YES" && (mode === "MR" || mode === "CTMR")) whyBase.push("Kontrastlı MR");
-      if (ringEnhancing) whyBase.push("Ring tutulum paterni");
-      if (diffRestriction || restrictedStrong) whyBase.push("Difüzyon kısıtlılığı");
-      if (hemorrhagicComponent) whyBase.push("Hemorajik komponent");
-      if (lesionCount === "MULTIPLE") whyBase.push("Multipl lezyon");
-
-      // DDX buckets
-      // Metastaz
-      if (ctxKnownCancer || lesionCount === "MULTIPLE") {
+      if (lesionCount === "MULTIPLE") {
         items.push({
           title: "Metastaz",
           why: [...whyBase, ctxKnownCancer ? "Kanser öyküsü" : "Multipl lezyon paterni"],
-          level: "Yüksek",
-        });
-      } else {
-        items.push({ title: "Glial tümör spektrumu (GBM dahil)", why: [...whyBase], level: "Orta" });
-      }
-
-      // Abscess vs necrotic tumor
-      if ((diffRestriction || restrictedStrong) && ringEnhancing) {
-        items.push({
-          title: "Beyin apsesi (özellikle pyogenic)",
-          why: [...whyBase, "Ring + belirgin restriksiyon apses lehine"],
-          level: ctxFeverSepsis || ctxImmunosupp ? "Yüksek" : "Orta",
-        });
-      } else if (ringEnhancing) {
-        items.push({
-          title: "Nekrotik tümör / metastaz / GBM",
-          why: [...whyBase, "Ring tutulum; restriksiyon yoksa tümör olasılığı artar"],
-          level: "Orta",
+          level: ctxKnownCancer ? "Yüksek" : "Orta",
         });
       }
-
-      // Meningioma strengthening (extraaxial)
-      if (lesionCompartment === "EXTRAAXIAL") {
-        const menWhy = [...whyBase];
-        if (duralTail) menWhy.push("Dural tail");
-        if (hyperostosis) menWhy.push("Hiperostozis");
-        if (csfCleft) menWhy.push("CSF cleft");
-        if (intenseHomEnh) menWhy.push("Belirgin homojen kontrastlanma");
+      if (ringEnhancing && (diffRestriction || restrictedStrong)) {
+        items.push({
+          title: "Beyin absesi",
+          why: [...whyBase, "Ring-enhancing + restriksiyon"],
+          level: ctxFeverSepsis ? "Yüksek" : "Orta",
+        });
+      }
+      // Meningioma strengthening
+      if (lesionCompartment === "EXTRAAXIAL" && meningiomaScore >= 2) {
         items.push({
           title: "Meningiom",
-          why: menWhy,
-          level: duralTail || hyperostosis || (intenseHomEnh && csfCleft) ? "Yüksek" : "Orta",
+          why: ["Ekstraaksiyel/dural bazlı", `Skor ${meningiomaScore}/4 (dural tail/hiperostoz/CSF cleft/homojen kontrast)`],
+          level: meningiomaHigh ? "Yüksek" : "Orta",
         });
       }
-
       // Lymphoma strengthening
-      const lymphWhy = [...whyBase];
-      if (deepPeriventricular) lymphWhy.push("Derin/periventriküler yerleşim");
-      if (t2IsoHypo) lymphWhy.push("T2 izo/hipo eğilim");
-      if (restrictedStrong) lymphWhy.push("Belirgin difüzyon kısıtlılığı");
-      if (ctxImmunosupp) lymphWhy.push("İmmünsüpresyon (PCNSL/OPI)");
-      const lymphLevel: "Yüksek" | "Orta" | "Düşük" =
-        (restrictedStrong && (deepPeriventricular || ctxImmunosupp)) ? "Yüksek" : restrictedStrong ? "Orta" : "Düşük";
-      items.push({
-        title: "Lenfoma (PCNSL dahil)",
-        why: lymphWhy,
-        level: lymphLevel,
-      });
+      if ((restrictedStrong || diffRestriction) && (deepPeriventricular || ctxImmunosupp || t2IsoHypo)) {
+        const lymphWhy: string[] = [];
+        if (restrictedStrong || diffRestriction) lymphWhy.push("Belirgin restriksiyon");
+        if (t2IsoHypo) lymphWhy.push("T2 izo/hipo eğilim");
+        if (deepPeriventricular) lymphWhy.push("Derin/periventriküler yerleşim");
+        if (ctxImmunosupp) lymphWhy.push("İmmünsüpresyon (PCNSL/OPI)");
+        items.push({
+          title: "Santral sinir sistemi lenfoması (PCNSL)",
+          why: lymphWhy,
+          level: lymphomaHigh ? "Yüksek" : "Orta",
+        });
+      }
     }
 
-    // de-duplicate by title keeping highest level
+    // Dedupe by title (keep highest level)
     const order = { Yüksek: 3, Orta: 2, Düşük: 1 } as const;
     const map = new Map<string, { title: string; why: string[]; level: "Yüksek" | "Orta" | "Düşük" }>();
     for (const it of items) {
       const prev = map.get(it.title);
       if (!prev || order[it.level] > order[prev.level]) map.set(it.title, it);
     }
-    const out = Array.from(map.values());
-    out.sort((a, b) => order[b.level] - order[a.level]);
-    return out.slice(0, 6);
+    return Array.from(map.values());
   }, [
-    flow,
+    ctxCVSTSusp,
     mode,
     ctPreset,
-    ctNeckCTA,
-    mrContrast,
-    mrDWI,
-    mrSWI,
-    mrPerfusion,
-    mrMRS,
-    ctxTraumaHx,
-    ctxAnticoag,
-    ctxKnownCancer,
-    ctxFeverSepsis,
-    ctxImmunosupp,
+    flow,
     hemType,
     extraSubtype,
     intraSubtype,
+    ctxAnticoag,
+    ctxTraumaHx,
     traumaSkullFx,
     traumaBasilarFx,
-    traumaVascularSusp,
     traumaDAI,
     traumaContusion,
-    traumaPneumocephalus,
-    traumaHerniation,
+    ctxKnownCancer,
+    ctxFeverSepsis,
+    ctxImmunosupp,
     lesionCount,
     lesionCompartment,
     ringEnhancing,
     diffRestriction,
     restrictedStrong,
-    markedEdema,
-    hemorrhagicComponent,
-    duralTail,
-    hyperostosis,
-    csfCleft,
-    intenseHomEnh,
-    t2IsoHypo,
+    meningiomaScore,
+    meningiomaHigh,
+    lymphomaHigh,
     deepPeriventricular,
+    t2IsoHypo,
   ]);
 
   const recommendations = useMemo(() => {
     const rec: string[] = [];
+
+    // CVST
+    if (ctxCVSTSusp) {
+      if (mode === "CT" || mode === "CTMR") {
+        rec.push("CVST şüphesinde dural venöz sinüslerin CTV ile değerlendirilmesi (alternatif: MRV) önerilebilir.");
+      }
+      if (mode === "MR" || mode === "CTMR") {
+        rec.push("MR yapılacaksa venografi (MRV) + DWI/ADC + SWI/T2* eklenmesi faydalıdır.");
+      }
+      if (cvstVenousInfarct) {
+        rec.push("Venöz infarkt şüphesinde hemorajik dönüşüm açısından SWI/T2* ve yakın klinik takip önerilir.");
+      }
+    }
 
     // Flow-based protocol suggestions
     if (flow === "HEMORRHAGE") {
@@ -563,11 +441,8 @@ export default function Page() {
       if (mode === "MR" || mode === "CTMR") {
         if (traumaDAI && !mrSWI) rec.push("DAI şüphesinde SWI/T2* eklenmesi faydalıdır.");
       }
-      if ((mode === "CT" || mode === "CTMR") && (traumaBasilarFx || traumaVascularSusp || traumaSkullFx)) {
-        if (ctPreset !== "CTA") rec.push("Baziler fraktür / vasküler yaralanma şüphesinde seçilmiş olguda CTA (gerekirse head+neck) değerlendirilebilir.");
-        if (ctPreset === "CTA" && (traumaBasilarFx || traumaVascularSusp) && !ctNeckCTA) {
-          rec.push("Vasküler yaralanma şüphesinde CTA head+neck (seçilmiş olguda) düşünülebilir.");
-        }
+      if ((mode === "CT" || mode === "CTMR") && (traumaBasilarFx || traumaSkullFx)) {
+        if (ctPreset !== "CTA") rec.push("Vasküler yaralanma şüphesinde seçilmiş olguda CTA değerlendirilebilir.");
       }
     }
 
@@ -582,28 +457,25 @@ export default function Page() {
       if ((mode === "MR" || mode === "CTMR") && (restrictedStrong || diffRestriction) && (deepPeriventricular || ctxImmunosupp)) {
         rec.push("Belirgin restriksiyon + derin/periventriküler yerleşimde lenfoma olasılığı: steroid başlamadan önce tanısal plan (biyopsi) klinikle değerlendirilmelidir.");
       }
-      if ((mode === "MR" || mode === "CTMR") && mrPerfusion) {
-        rec.push("Perfüzyon (DSC/DCE) seçilmiş olgularda tümör derecelendirme/tedavi yanıtı ayrımında yardımcı olabilir.");
-      }
     }
 
-    return rec.slice(0, 6);
+    return rec;
   }, [
-    flow,
+    ctxCVSTSusp,
+    cvstVenousInfarct,
     mode,
+    flow,
     ctPreset,
-    ctNeckCTA,
     ctxTraumaHx,
-    ctxAnticoag,
     extraSubtype,
     intraSubtype,
-    thicknessMm,
+    ctxAnticoag,
     midlineShiftMm,
+    thicknessMm,
     traumaDAI,
-    traumaBasilarFx,
-    traumaVascularSusp,
-    traumaSkullFx,
     mrSWI,
+    traumaBasilarFx,
+    traumaSkullFx,
     ringEnhancing,
     diffRestriction,
     restrictedStrong,
@@ -612,7 +484,6 @@ export default function Page() {
     hyperostosis,
     deepPeriventricular,
     ctxImmunosupp,
-    mrPerfusion,
   ]);
 
   const finalReport = useMemo(() => {
@@ -624,17 +495,55 @@ export default function Page() {
     // Context
     if (ctxSummary.length) lines.push(`Klinik: ${ctxSummary.join(", ")}.`);
 
+    // CVST (report-ready) — independent of flow; often coexists with hemorrhage/venous infarct
+    if (ctxCVSTSusp) {
+      const hasCTV = (mode === "CT" || mode === "CTMR") && ctPreset === "CTV";
+      const sideTxt =
+        cvstLaterality === "Bilateral" ? "bilateral" : cvstLaterality === "R" ? "sağ" : cvstLaterality === "L" ? "sol" : "orta hat";
+      const occlTxt = cvstOcclusion === "Complete" ? "tam" : "parsiyel";
+
+      const sinusShort: Record<VenousSinus, string> = {
+        "Superior sagittal sinus": "SSS",
+        "Straight sinus": "straight sinüs",
+        "Transverse sinus": "transvers sinüs",
+        "Sigmoid sinus": "sigmoid sinüs",
+        "Internal jugular vein": "internal juguler ven",
+        "Deep venous system": "derin venöz sistem",
+        "Cortical veins": "kortikal venler",
+      };
+      const sinTxt = cvstSinuses.length ? cvstSinuses.map((s) => sinusShort[s]).join(", ") : "dural venöz sinüsler";
+
+      const extras: string[] = [];
+      if (cvstCorticalVeinInvolvement) extras.push("kortikal ven tutulumu");
+      if (cvstVenousInfarct) extras.push(cvstHemorrhagicVenousInfarct ? "hemorajik venöz infarkt" : "venöz infarkt");
+      if (cvstHintDenseSinus) extras.push("NCCT'de dense sinus/cord sign");
+      if (cvstHintEmptyDelta) extras.push("kontrastlı incelemede empty delta/dolum defekti");
+
+      lines.push(
+        `${hasCTV ? "CTV'de" : "Klinik CVST şüphesi kapsamında"} ${sideTxt} ${sinTxt} düzeyinde ${occlTxt} dolum defekti/tromboz ile uyumlu görünüm izlenmektedir${
+          extras.length ? ` (${extras.join(", ")}).` : "."
+        }`
+      );
+    }
+
     if (flow === "HEMORRHAGE") {
       // Describe hemorrhage with location + measurements
       const parts: string[] = [];
 
       if (hemType === "EXTRAAXIAL") {
         const subtypeLabel =
-          extraSubtype === "SDH" ? "Subdural hematom" :
-          extraSubtype === "EDH" ? "Epidural hematom" :
-          extraSubtype === "SAH" ? "Subaraknoid kanama" : "İntraventriküler kanama";
+          extraSubtype === "SDH"
+            ? "Subdural hematom"
+            : extraSubtype === "EDH"
+            ? "Epidural hematom"
+            : extraSubtype === "SAH"
+            ? "Subaraknoid kanama"
+            : "İntraventriküler kanama";
 
-        const loc = extraSubtype === "SAH" ? "" : `(${extraLoc}, ${hemSide === "Bilateral" ? "bilateral" : hemSide === "Midline" ? "orta hat" : hemSide === "R" ? "sağ" : "sol"})`;
+        const loc =
+          extraSubtype === "SAH"
+            ? ""
+            : `(${extraLoc}, ${hemSide === "Bilateral" ? "bilateral" : hemSide === "Midline" ? "orta hat" : hemSide === "R" ? "sağ" : "sol"})`;
         parts.push(`${subtypeLabel} ${loc}`.trim());
 
         const m: string[] = [];
@@ -645,9 +554,13 @@ export default function Page() {
         if (m.length) parts.push(`(${m.filter(Boolean).join(", ")})`);
       } else {
         const subtypeLabel =
-          intraSubtype === "ICH" ? "İntraparenkimal hematom" :
-          intraSubtype === "HEM_CONTUSION" ? "Hemorajik kontüzyon" :
-          intraSubtype === "SAH" ? "Subaraknoid kanama" : "İntraventriküler kanama";
+          intraSubtype === "ICH"
+            ? "İntraparenkimal hematom"
+            : intraSubtype === "HEM_CONTUSION"
+            ? "Hemorajik kontüzyon"
+            : intraSubtype === "SAH"
+            ? "Subaraknoid kanama"
+            : "İntraventriküler kanama";
 
         const region = intraSubtype === "IVH" ? "ventriküler sistem" : `${hemRegion.toLowerCase()} bölgede`;
         const side = hemSide === "Bilateral" ? "bilateral" : hemSide === "Midline" ? "orta hat" : hemSide === "R" ? "sağ" : "sol";
@@ -686,41 +599,48 @@ export default function Page() {
       const parts: string[] = [];
       parts.push(lesionCount === "MULTIPLE" ? "Multipl lezyon paterni" : "Soliter lezyon paterni");
       parts.push(lesionCompartment === "EXTRAAXIAL" ? "ekstraaksiyel/dural bazlı" : "intraaksiyel");
-      if (ringEnhancing) parts.push("ring tutulum");
-      if (diffRestriction || restrictedStrong) parts.push("difüzyon kısıtlılığı");
-      if (markedEdema) parts.push("çevresel ödem");
-      if (hemorrhagicComponent) parts.push("hemorajik komponent");
 
-      lines.push(`${parts.join(", ")} ile uyumlu görünüm mevcuttur.`);
-      if (lesionCompartment === "EXTRAAXIAL" && (duralTail || hyperostosis || csfCleft)) {
-        lines.push("Dural bazlı lezyonda meningiom lehine işaretler (dural tail/hiperostozis/CSF cleft) mevcuttur.");
-      }
-      if ((restrictedStrong || diffRestriction) && (deepPeriventricular || ctxImmunosupp || t2IsoHypo)) {
-        lines.push("Belirgin restriksiyon + derin/periventriküler yerleşim ve/veya T2 izo/hipo eğilim lenfoma olasılığını artırır.");
-      }
+      const flags: string[] = [];
+      if (ringEnhancing) flags.push("ring-enhancing");
+      if (diffRestriction || restrictedStrong) flags.push("restriksiyon");
+      if (markedEdema) flags.push("belirgin ödem");
+      if (hemorrhagicComponent) flags.push("hemorajik komponent");
+      if (flags.length) parts.push(`(${flags.join(", ")})`);
+
+      lines.push(`${parts.join(" ")} izlenmektedir. Ayırıcı tanılar klinik ve protokol ile birlikte değerlendirilmelidir.`);
+      lines.push("Gerekirse kontrastlı MR + DWI/SWI ile ileri karakterizasyon önerilir.");
     }
 
-    if (incidental.trim()) {
-      lines.push(`Ek/İnsidental: ${incidental.trim()}`);
-    }
+    if (incidental.trim()) lines.push(`Ek/İnsidental: ${incidental.trim()}`);
 
     return lines.join("\n");
   }, [
     protocolSummary,
     ctxSummary,
+    ctxCVSTSusp,
+    mode,
+    ctPreset,
+    cvstLaterality,
+    cvstOcclusion,
+    cvstSinuses,
+    cvstCorticalVeinInvolvement,
+    cvstVenousInfarct,
+    cvstHemorrhagicVenousInfarct,
+    cvstHintDenseSinus,
+    cvstHintEmptyDelta,
     flow,
     hemType,
     extraSubtype,
     intraSubtype,
     extraLoc,
     hemSide,
-    hemRegion,
     thicknessMm,
     midlineShiftMm,
+    hasSAHExt,
+    hasIVHExt,
+    hemRegion,
     maxDiamCm,
     abcVolumeMl,
-    hasIVHExt,
-    hasSAHExt,
     bloodAgeHint,
     traumaContusion,
     traumaDAI,
@@ -735,25 +655,8 @@ export default function Page() {
     restrictedStrong,
     markedEdema,
     hemorrhagicComponent,
-    duralTail,
-    hyperostosis,
-    csfCleft,
-    deepPeriventricular,
-    ctxImmunosupp,
-    t2IsoHypo,
     incidental,
   ]);
-
-  const copyAll = async () => {
-    try {
-      await navigator.clipboard.writeText(finalReport);
-      setCopyOk("Kopyalandı ✅");
-      setTimeout(() => setCopyOk(""), 1200);
-    } catch {
-      setCopyOk("Kopyalanamadı");
-      setTimeout(() => setCopyOk(""), 1200);
-    }
-  };
 
   const resetBrain = () => {
     setMode("CT");
@@ -763,6 +666,7 @@ export default function Page() {
     setCtxKnownCancer(false);
     setCtxFeverSepsis(false);
     setCtxImmunosupp(false);
+    setCtxCVSTSusp(false);
 
     setCtPreset("NCCT");
     setCtNeckCTA(false);
@@ -775,7 +679,6 @@ export default function Page() {
 
     setTraumaSkullFx(false);
     setTraumaBasilarFx(false);
-    setTraumaVascularSusp(false);
     setTraumaDAI(false);
     setTraumaContusion(true);
     setTraumaPneumocephalus(false);
@@ -790,9 +693,21 @@ export default function Page() {
     setThicknessMm("");
     setMidlineShiftMm("");
     setMaxDiamCm("");
+    setAbcAcm("");
+    setAbcBcm("");
+    setAbcCcm("");
     setHasIVHExt(false);
     setHasSAHExt(false);
     setBloodAgeHint("");
+
+    setCvstSinuses(["Superior sagittal sinus"]);
+    setCvstLaterality("Midline");
+    setCvstOcclusion("Partial");
+    setCvstCorticalVeinInvolvement(false);
+    setCvstVenousInfarct(false);
+    setCvstHemorrhagicVenousInfarct(false);
+    setCvstHintDenseSinus(false);
+    setCvstHintEmptyDelta(false);
 
     setLesionCount("SOLITARY");
     setLesionCompartment("INTRAAXIAL");
@@ -817,254 +732,85 @@ export default function Page() {
   const showMRPanel = mode === "MR" || mode === "CTMR";
 
   const ctPanelNeeded = useMemo(() => {
-    // CT panel always available if CT is in mode
     return showCTPanel;
   }, [showCTPanel]);
 
   const mrPanelNeeded = useMemo(() => {
-    // MR panel always available if MR is in mode
     return showMRPanel;
   }, [showMRPanel]);
 
+  // Copy output
+  const copyAll = async () => {
+    try {
+      await navigator.clipboard.writeText(finalReport);
+      setCopyOk("Kopyalandı");
+      setTimeout(() => setCopyOk(""), 1200);
+    } catch {
+      setCopyOk("Kopyalama başarısız");
+      setTimeout(() => setCopyOk(""), 1500);
+    }
+  };
+
   return (
-    <div className="min-h-screen bg-white">
-      <div className="mx-auto max-w-6xl px-4 py-8">
-        <div className="flex flex-col gap-2 mb-6">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <h1 className="text-2xl font-bold tracking-tight">radiology-clean</h1>
-              <p className="text-sm text-slate-600">
-                Organ seçimi → ilgili modül açılır (Karaciğer ayrı route: <span className="font-mono">/liver</span>)
-              </p>
-            </div>
-            <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm" className="rounded-full" onClick={resetBrain}>
-                Sıfırla
-              </Button>
-              <Button variant="outline" size="sm" className="rounded-full" onClick={copyAll}>
-                Kopyala
-              </Button>
-            </div>
+    <div className="min-h-screen bg-slate-50">
+      <div className="max-w-6xl mx-auto p-4 md:p-6">
+        <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between mb-4">
+          <div>
+            <div className="text-xs text-slate-500">radiology-clean-standalone</div>
+            <div className="text-xl font-semibold tracking-tight">Structured Radiology Assistant</div>
           </div>
 
-          {/* Organ selector */}
-          <div className="flex items-center justify-end gap-2">
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant={organ === "brain" ? "default" : "outline"}
+              className="rounded-full"
+              onClick={() => setOrgan("brain")}
+            >
+              Beyin
+            </Button>
             <Button
               variant={organ === "liver" ? "default" : "outline"}
-              size="sm"
               className="rounded-full"
               onClick={() => {
                 setOrgan("liver");
                 goLiver();
               }}
             >
-              Karaciğer
+              Karaciğer (Route)
             </Button>
-            <Button
-              variant={organ === "brain" ? "default" : "outline"}
-              size="sm"
-              className="rounded-full"
-              onClick={() => setOrgan("brain")}
-            >
-              Beyin
+            <Button variant="outline" className="rounded-full" onClick={resetBrain}>
+              Reset
             </Button>
           </div>
         </div>
 
-        {/* Two-column layout */}
+        {copyOk ? <div className="text-xs text-emerald-700 mb-3">{copyOk}</div> : null}
+
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Left: Inputs */}
-          <div className="lg:col-span-2 flex flex-col gap-6">
+          <div className="lg:col-span-2 space-y-6">
             <Card className="rounded-2xl shadow-sm">
               <CardHeader className="pb-2">
-                <CardTitle className="text-lg">Beyin AI Yardımcı Modül</CardTitle>
-                <div className="text-sm text-slate-600">
-                  BT / MR / BT+MR seç → akış seç (travma/kanama/kitle-enfeksiyon) → alt seçimlerle rapor + ddx + öneri.
-                </div>
+                <CardTitle className="text-base">Beyin Modülü</CardTitle>
               </CardHeader>
               <CardContent className="space-y-5">
-                {/* Modality mode */}
-                <div>
-                  <SectionTitle>İnceleme tipi</SectionTitle>
+                {/* Mode */}
+                <div className="rounded-xl border p-4">
+                  <SectionTitle>Görüntüleme</SectionTitle>
                   <Segmented
                     value={mode}
                     onChange={(v) => setMode(v as ModalityMode)}
                     options={[
                       { key: "CT", label: "BT" },
                       { key: "MR", label: "MR" },
-                      { key: "CTMR", label: "BT+MR" },
+                      { key: "CTMR", label: "BT + MR" },
                     ]}
                   />
-                  <div className="mt-2 text-xs text-slate-500">
-                    Not: Beyinde “dinamik faz” yerine klinik olarak kullanılan protokol/sekans ekleri (CTA/CTV/CTP, perfüzyon, SWI vb.) modellenir.
-                  </div>
                 </div>
 
-                {/* Protocol panels */}
-                {ctPanelNeeded && (
-                  <div className="rounded-xl border p-4">
-                    <SectionTitle>BT Protokol</SectionTitle>
-                    <div className="flex flex-wrap gap-2">
-                      <Button
-                        size="sm"
-                        variant={ctPreset === "NCCT" ? "default" : "outline"}
-                        className="rounded-full"
-                        onClick={() => setCtPreset("NCCT")}
-                      >
-                        Non-kontrast BT
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant={ctPreset === "CECT" ? "default" : "outline"}
-                        className="rounded-full"
-                        onClick={() => setCtPreset("CECT")}
-                      >
-                        Kontrastlı BT
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant={ctPreset === "CTA" ? "default" : "outline"}
-                        className="rounded-full"
-                        onClick={() => setCtPreset("CTA")}
-                      >
-                        CTA
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant={ctPreset === "CTV" ? "default" : "outline"}
-                        className="rounded-full"
-                        onClick={() => setCtPreset("CTV")}
-                      >
-                        CTV
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant={ctPreset === "CTP" ? "default" : "outline"}
-                        className="rounded-full"
-                        onClick={() => setCtPreset("CTP")}
-                      >
-                        CTP
-                      </Button>
-                    </div>
-
-                    {ctPreset === "CTA" && (
-                      <div className="mt-3 flex items-center justify-between gap-3 rounded-lg border p-3">
-                        <div className="text-sm">
-                          <div className="font-medium text-slate-800">CTA head+neck</div>
-                          <div className="text-xs text-slate-500">Travma vasküler yaralanma şüphesi vb. seçilmiş olgularda.</div>
-                        </div>
-                        <Switch checked={ctNeckCTA} onCheckedChange={setCtNeckCTA} />
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {mrPanelNeeded && (
-                  <div className="rounded-xl border p-4">
-                    <SectionTitle>MR Protokol</SectionTitle>
-
-                    <div className="flex flex-wrap items-center gap-2 mb-3">
-                      <Pill>Kontrast</Pill>
-                      <Button
-                        size="sm"
-                        variant={mrContrast === "YES" ? "default" : "outline"}
-                        className="rounded-full"
-                        onClick={() => setMrContrast("YES")}
-                      >
-                        Var
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant={mrContrast === "NO" ? "default" : "outline"}
-                        className="rounded-full"
-                        onClick={() => setMrContrast("NO")}
-                      >
-                        Yok
-                      </Button>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      <div className="flex items-center justify-between rounded-lg border p-3">
-                        <div className="text-sm">
-                          <div className="font-medium">DWI/ADC</div>
-                          <div className="text-xs text-slate-500">Enfeksiyon/lenfoma/iskemi vb.</div>
-                        </div>
-                        <Switch checked={mrDWI} onCheckedChange={setMrDWI} />
-                      </div>
-
-                      <div className="flex items-center justify-between rounded-lg border p-3">
-                        <div className="text-sm">
-                          <div className="font-medium">SWI/T2*</div>
-                          <div className="text-xs text-slate-500">Mikrokanama, DAI, hemorajik komponent.</div>
-                        </div>
-                        <Switch checked={mrSWI} onCheckedChange={setMrSWI} />
-                      </div>
-
-                      <div className="flex items-center justify-between rounded-lg border p-3">
-                        <div className="text-sm">
-                          <div className="font-medium">Perfüzyon (DSC/DCE)</div>
-                          <div className="text-xs text-slate-500">Seçilmiş tümör olgularında yardımcı.</div>
-                        </div>
-                        <Switch checked={mrPerfusion} onCheckedChange={setMrPerfusion} />
-                      </div>
-
-                      <div className="flex items-center justify-between rounded-lg border p-3">
-                        <div className="text-sm">
-                          <div className="font-medium">MRS</div>
-                          <div className="text-xs text-slate-500">Seçilmiş olgularda metabolik ipuçları.</div>
-                        </div>
-                        <Switch checked={mrMRS} onCheckedChange={setMrMRS} />
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* Protocol assistant */}
-                {protocolAssistant.length > 0 && (
-                  <div className="rounded-xl border p-4">
-                    <div className="flex items-center justify-between gap-3 mb-2">
-                      <SectionTitle>Protokol asistanı</SectionTitle>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="rounded-full"
-                        onClick={applyAllProtocolAssistantActions}
-                      >
-                        Önerilenleri uygula
-                      </Button>
-                    </div>
-                    <div className="space-y-3">
-                      {protocolAssistant.map((t, idx) => (
-                        <div key={idx} className="rounded-xl border p-3">
-                          <div className="text-sm font-medium text-slate-800">{t.title}</div>
-                          <div className="mt-1 text-xs text-slate-600">{t.why}</div>
-                          {t.actions?.length ? (
-                            <div className="mt-2 flex flex-wrap gap-2">
-                              {t.actions.slice(0, 6).map((a, i) => (
-                                <Button
-                                  key={i}
-                                  size="sm"
-                                  variant="secondary"
-                                  className="rounded-full"
-                                  onClick={a.apply}
-                                >
-                                  {a.label}
-                                </Button>
-                              ))}
-                            </div>
-                          ) : null}
-                        </div>
-                      ))}
-                    </div>
-                    <div className="mt-2 text-[11px] text-slate-500">
-                      Not: Bu öneriler pratik protokol kullanımını yansıtır; klinik endikasyona göre uyarlanmalıdır.
-                    </div>
-                  </div>
-                )}
-
                 {/* Flow */}
-                <div>
-                  <SectionTitle>Akış</SectionTitle>
+                <div className="rounded-xl border p-4">
+                  <SectionTitle>Klinik soru / akış</SectionTitle>
                   <Segmented
                     value={flow}
                     onChange={(v) => setFlow(v as BrainFlow)}
@@ -1119,7 +865,107 @@ export default function Page() {
                       </div>
                       <Switch checked={ctxImmunosupp} onCheckedChange={setCtxImmunosupp} />
                     </div>
+
+                    <div className="flex items-center justify-between rounded-lg border p-3">
+                      <div className="text-sm">
+                        <div className="font-medium">CVST şüphesi</div>
+                        <div className="text-xs text-slate-500">Baş ağrısı/papilödem, postpartum/OCP, trombofili...</div>
+                      </div>
+                      <Switch checked={ctxCVSTSusp} onCheckedChange={setCtxCVSTSusp} />
+                    </div>
                   </div>
+                </div>
+
+                {/* CT/MR protocol */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {ctPanelNeeded && (
+                    <div className="rounded-xl border p-4">
+                      <SectionTitle>BT Protokol</SectionTitle>
+                      <div className="flex flex-wrap gap-2 mb-3">
+                        {(["NCCT", "CECT", "CTA", "CTV", "CTP"] as CTPreset[]).map((p) => (
+                          <Button
+                            key={p}
+                            size="sm"
+                            variant={ctPreset === p ? "default" : "outline"}
+                            className="rounded-full"
+                            onClick={() => setCtPreset(p)}
+                          >
+                            {p === "NCCT" ? "Non-kontrast" : p === "CECT" ? "Kontrastlı" : p}
+                          </Button>
+                        ))}
+                      </div>
+
+                      {(ctPreset === "CTA" || ctPreset === "CTP") && (
+                        <div className="flex items-center justify-between rounded-lg border p-3">
+                          <div className="text-sm">
+                            <div className="font-medium">CTA head+neck</div>
+                            <div className="text-xs text-slate-500">Diseksiyon vb. şüphede</div>
+                          </div>
+                          <Switch checked={ctNeckCTA} onCheckedChange={setCtNeckCTA} />
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {mrPanelNeeded && (
+                    <div className="rounded-xl border p-4">
+                      <SectionTitle>MR Protokol</SectionTitle>
+
+                      <div className="flex flex-wrap items-center gap-2 mb-3">
+                        <Pill>Kontrast</Pill>
+                        <Button
+                          size="sm"
+                          variant={mrContrast === "YES" ? "default" : "outline"}
+                          className="rounded-full"
+                          onClick={() => setMrContrast("YES")}
+                        >
+                          Var
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant={mrContrast === "NO" ? "default" : "outline"}
+                          className="rounded-full"
+                          onClick={() => setMrContrast("NO")}
+                        >
+                          Yok
+                        </Button>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div className="flex items-center justify-between rounded-lg border p-3">
+                          <div className="text-sm">
+                            <div className="font-medium">DWI/ADC</div>
+                            <div className="text-xs text-slate-500">Enfeksiyon/lenfoma/iskemi vb.</div>
+                          </div>
+                          <Switch checked={mrDWI} onCheckedChange={setMrDWI} />
+                        </div>
+
+                        <div className="flex items-center justify-between rounded-lg border p-3">
+                          <div className="text-sm">
+                            <div className="font-medium">SWI/T2*</div>
+                            <div className="text-xs text-slate-500">Mikrokanama, DAI, hemorajik komponent.</div>
+                          </div>
+                          <Switch checked={mrSWI} onCheckedChange={setMrSWI} />
+                        </div>
+
+                        <div className="flex items-center justify-between rounded-lg border p-3">
+                          <div className="text-sm">
+                            <div className="font-medium">Perfüzyon (DSC/DCE)</div>
+                            <div className="text-xs text-slate-500">Seçilmiş tümör olgularında yardımcı.</div>
+                          </div>
+                          <Switch checked={mrPerfusion} onCheckedChange={setMrPerfusion} />
+                        </div>
+
+                        <div className="flex items-center justify-between rounded-lg border p-3">
+                          <div className="text-sm">
+                            <div className="font-medium">MRS</div>
+                            <div className="text-xs text-slate-500">Seçilmiş olguda</div>
+                          </div>
+                          <Switch checked={mrMRS} onCheckedChange={setMrMRS} />
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* FLOW: TRAUMA */}
@@ -1153,32 +999,24 @@ export default function Page() {
 
                       <div className="flex items-center justify-between rounded-lg border p-3">
                         <div className="text-sm">
-                          <div className="font-medium">Baziler fraktür şüphesi</div>
-                          <div className="text-xs text-slate-500">Vasküler yaralanma açısından seçilmiş olguda CTA düşünülebilir</div>
+                          <div className="font-medium">Baziler fraktür</div>
+                          <div className="text-xs text-slate-500">Kafa tabanı bulguları</div>
                         </div>
                         <Switch checked={traumaBasilarFx} onCheckedChange={setTraumaBasilarFx} />
                       </div>
 
                       <div className="flex items-center justify-between rounded-lg border p-3">
                         <div className="text-sm">
-                          <div className="font-medium">Vasküler yaralanma şüphesi</div>
-                          <div className="text-xs text-slate-500">Diseksiyon/psödoanevrizma vb. şüphede CTA (gerekirse head+neck) önerilir</div>
-                        </div>
-                        <Switch checked={traumaVascularSusp} onCheckedChange={setTraumaVascularSusp} />
-                      </div>
-
-                      <div className="flex items-center justify-between rounded-lg border p-3">
-                        <div className="text-sm">
                           <div className="font-medium">Pnömosefali</div>
-                          <div className="text-xs text-slate-500">Fraktür ile ilişkili olabilir</div>
+                          <div className="text-xs text-slate-500">Kafa tabanı fx ile ilişkili</div>
                         </div>
                         <Switch checked={traumaPneumocephalus} onCheckedChange={setTraumaPneumocephalus} />
                       </div>
 
                       <div className="flex items-center justify-between rounded-lg border p-3">
                         <div className="text-sm">
-                          <div className="font-medium">Herniasyon bulgusu</div>
-                          <div className="text-xs text-slate-500">Kitle etkisi/kompresyon</div>
+                          <div className="font-medium">Herniasyon</div>
+                          <div className="text-xs text-slate-500">Kitle etkisi bulguları</div>
                         </div>
                         <Switch checked={traumaHerniation} onCheckedChange={setTraumaHerniation} />
                       </div>
@@ -1188,224 +1026,208 @@ export default function Page() {
 
                 {/* FLOW: HEMORRHAGE */}
                 {flow === "HEMORRHAGE" && (
-                  <div className="rounded-xl border p-4 space-y-4">
-                    <SectionTitle>Kanama alt seçimler</SectionTitle>
+                  <div className="rounded-xl border p-4 space-y-3">
+                    <SectionTitle>Kanama değerlendirme</SectionTitle>
 
-                    <div>
-                      <div className="text-sm font-medium text-slate-800 mb-2">Kompartman</div>
-                      <Segmented
-                        value={hemType}
-                        onChange={(v) => setHemType(v as BrainHemType)}
-                        options={[
-                          { key: "INTRAAXIAL", label: "İntraaksiyel" },
-                          { key: "EXTRAAXIAL", label: "Ekstraaksiyel" },
-                        ]}
-                      />
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Pill>Kompartman</Pill>
+                      <Button
+                        size="sm"
+                        variant={hemType === "INTRAAXIAL" ? "default" : "outline"}
+                        className="rounded-full"
+                        onClick={() => setHemType("INTRAAXIAL")}
+                      >
+                        İntraaksiyel
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant={hemType === "EXTRAAXIAL" ? "default" : "outline"}
+                        className="rounded-full"
+                        onClick={() => setHemType("EXTRAAXIAL")}
+                      >
+                        Ekstraaksiyel
+                      </Button>
                     </div>
 
-                    {hemType === "EXTRAAXIAL" ? (
-                      <div className="space-y-3">
-                        <div>
-                          <div className="text-sm font-medium text-slate-800 mb-2">Tip</div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="rounded-xl border p-3 space-y-3">
+                        <div className="text-sm font-semibold text-slate-700">Tip / Yer</div>
+
+                        <div className="flex flex-wrap gap-2">
+                          <Pill>Taraf</Pill>
                           <Segmented
-                            value={extraSubtype}
-                            onChange={(v) => setExtraSubtype(v as ExtraAxialSubtype)}
+                            value={hemSide}
+                            onChange={(v) => setHemSide(v as Side)}
                             options={[
-                              { key: "SDH", label: "SDH" },
-                              { key: "EDH", label: "EDH" },
-                              { key: "SAH", label: "SAH" },
-                              { key: "IVH", label: "IVH" },
+                              { key: "R", label: "Sağ" },
+                              { key: "L", label: "Sol" },
+                              { key: "Bilateral", label: "Bilateral" },
+                              { key: "Midline", label: "Orta hat" },
                             ]}
                           />
                         </div>
 
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                          <div>
-                            <div className="text-xs text-slate-500 mb-1">Taraf</div>
-                            <Segmented
-                              value={hemSide}
-                              onChange={(v) => setHemSide(v as Side)}
-                              options={[
-                                { key: "R", label: "Sağ" },
-                                { key: "L", label: "Sol" },
-                                { key: "Bilateral", label: "Bilat" },
-                                { key: "Midline", label: "Orta" },
-                              ]}
-                            />
-                          </div>
+                        {hemType === "EXTRAAXIAL" ? (
+                          <>
+                            <div className="flex flex-wrap gap-2">
+                              <Pill>Alt tip</Pill>
+                              <Segmented
+                                value={extraSubtype}
+                                onChange={(v) => setExtraSubtype(v as ExtraAxialSubtype)}
+                                options={[
+                                  { key: "SDH", label: "SDH" },
+                                  { key: "EDH", label: "EDH" },
+                                  { key: "SAH", label: "SAH" },
+                                  { key: "IVH", label: "IVH" },
+                                ]}
+                              />
+                            </div>
 
-                          <div>
-                            <div className="text-xs text-slate-500 mb-1">Yerleşim</div>
-                            <Segmented
-                              value={extraLoc}
-                              onChange={(v) => setExtraLoc(v as ExtraAxialLocation)}
-                              options={[
-                                { key: "Convexity", label: "Konveksite" },
-                                { key: "Falx", label: "Falx" },
-                                { key: "Tentorium", label: "Tentoryum" },
-                                { key: "Skull base", label: "Skull base" },
-                                { key: "Diffuse", label: "Difüz" },
-                              ]}
-                            />
-                          </div>
-                        </div>
+                            <div className="flex flex-wrap gap-2">
+                              <Pill>Uzanım</Pill>
+                              <Segmented
+                                value={extraLoc}
+                                onChange={(v) => setExtraLoc(v as ExtraAxialLocation)}
+                                options={[
+                                  { key: "Convexity", label: "Konveksite" },
+                                  { key: "Falx", label: "Falx" },
+                                  { key: "Tentorium", label: "Tentoryum" },
+                                  { key: "Skull base", label: "Kafa tabanı" },
+                                  { key: "Diffuse", label: "Diffüz" },
+                                ]}
+                              />
+                            </div>
+                          </>
+                        ) : (
+                          <>
+                            <div className="flex flex-wrap gap-2">
+                              <Pill>Alt tip</Pill>
+                              <Segmented
+                                value={intraSubtype}
+                                onChange={(v) => setIntraSubtype(v as IntraAxialSubtype)}
+                                options={[
+                                  { key: "ICH", label: "ICH" },
+                                  { key: "HEM_CONTUSION", label: "Hemor. kontüzyon" },
+                                  { key: "SAH", label: "SAH" },
+                                  { key: "IVH", label: "IVH" },
+                                ]}
+                              />
+                            </div>
 
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                          <div>
-                            <div className="text-xs text-slate-500 mb-1">Maks kalınlık (mm)</div>
-                            <Input value={thicknessMm} onChange={(e) => setThicknessMm(e.target.value)} placeholder="örn: 8" />
+                            <div className="flex flex-wrap gap-2">
+                              <Pill>Bölge</Pill>
+                              <Segmented
+                                value={hemRegion}
+                                onChange={(v) => setHemRegion(v as BrainRegion)}
+                                options={[
+                                  { key: "Frontal", label: "Frontal" },
+                                  { key: "Parietal", label: "Parietal" },
+                                  { key: "Temporal", label: "Temporal" },
+                                  { key: "Occipital", label: "Occipital" },
+                                  { key: "Basal ganglia", label: "BG" },
+                                  { key: "Thalamus", label: "Talamus" },
+                                  { key: "Brainstem", label: "Beyin sapı" },
+                                  { key: "Cerebellum", label: "Serebellum" },
+                                  { key: "Intraventricular", label: "IV" },
+                                  { key: "Other", label: "Diğer" },
+                                ]}
+                              />
+                            </div>
+                          </>
+                        )}
+                      </div>
+
+                      <div className="rounded-xl border p-3 space-y-3">
+                        <div className="text-sm font-semibold text-slate-700">Ölçümler / eşlik</div>
+
+                        {hemType === "EXTRAAXIAL" ? (
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            <div>
+                              <div className="text-xs font-medium text-slate-600 mb-1">Maks kalınlık (mm)</div>
+                              <Input value={thicknessMm} onChange={(e) => setThicknessMm(e.target.value)} placeholder="örn: 8" />
+                            </div>
+                            <div>
+                              <div className="text-xs font-medium text-slate-600 mb-1">Midline shift (mm)</div>
+                              <Input value={midlineShiftMm} onChange={(e) => setMidlineShiftMm(e.target.value)} placeholder="örn: 4" />
+                            </div>
                           </div>
-                          <div>
-                            <div className="text-xs text-slate-500 mb-1">Midline shift (mm)</div>
-                            <Input value={midlineShiftMm} onChange={(e) => setMidlineShiftMm(e.target.value)} placeholder="örn: 4" />
+                        ) : (
+                          <div className="space-y-3">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                              <div>
+                                <div className="text-xs font-medium text-slate-600 mb-1">Maks çap (cm)</div>
+                                <Input value={maxDiamCm} onChange={(e) => setMaxDiamCm(e.target.value)} placeholder="örn: 3.2" />
+                              </div>
+                              <div>
+                                <div className="text-xs font-medium text-slate-600 mb-1">Midline shift (mm)</div>
+                                <Input value={midlineShiftMm} onChange={(e) => setMidlineShiftMm(e.target.value)} placeholder="örn: 6" />
+                              </div>
+                            </div>
+
+                            <div className="rounded-lg border p-3">
+                              <div className="flex items-center justify-between">
+                                <div className="text-sm font-medium">ABC/2 (yaklaşık hacim)</div>
+                                <Badge variant="secondary">{abcVolumeMl ? `${abcVolumeMl} mL` : "—"}</Badge>
+                              </div>
+                              <div className="mt-2 grid grid-cols-3 gap-2">
+                                <div>
+                                  <div className="text-[11px] text-slate-500 mb-1">A (cm)</div>
+                                  <Input value={abcAcm} onChange={(e) => setAbcAcm(e.target.value)} placeholder="A" />
+                                </div>
+                                <div>
+                                  <div className="text-[11px] text-slate-500 mb-1">B (cm)</div>
+                                  <Input value={abcBcm} onChange={(e) => setAbcBcm(e.target.value)} placeholder="B" />
+                                </div>
+                                <div>
+                                  <div className="text-[11px] text-slate-500 mb-1">C (cm)</div>
+                                  <Input value={abcCcm} onChange={(e) => setAbcCcm(e.target.value)} placeholder="C" />
+                                </div>
+                              </div>
+                              <div className="mt-2 text-xs text-slate-500">
+                                Not: ABC/2 yaklaşık hacim verir; slice thickness & slice sayısından C hesaplanabilir.
+                              </div>
+                            </div>
                           </div>
-                          <div>
-                            <div className="text-xs text-slate-500 mb-1">Maks çap (cm) (ops.)</div>
-                            <Input value={maxDiamCm} onChange={(e) => setMaxDiamCm(e.target.value)} placeholder="örn: 3.2" />
-                          </div>
-                        </div>
+                        )}
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                           <div className="flex items-center justify-between rounded-lg border p-3">
                             <div className="text-sm">
-                              <div className="font-medium">Eşlik eden SAH</div>
-                              <div className="text-xs text-slate-500">Sulkal/sisternal yayılım</div>
-                            </div>
-                            <Switch checked={hasSAHExt} onCheckedChange={setHasSAHExt} />
-                          </div>
-                          <div className="flex items-center justify-between rounded-lg border p-3">
-                            <div className="text-sm">
                               <div className="font-medium">Eşlik eden IVH</div>
-                              <div className="text-xs text-slate-500">Ventriküler yayılım</div>
+                              <div className="text-xs text-slate-500">Ventrikül içine açılım</div>
                             </div>
                             <Switch checked={hasIVHExt} onCheckedChange={setHasIVHExt} />
                           </div>
+
+                          <div className="flex items-center justify-between rounded-lg border p-3">
+                            <div className="text-sm">
+                              <div className="font-medium">Eşlik eden SAH</div>
+                              <div className="text-xs text-slate-500">Sulkal/cisternal</div>
+                            </div>
+                            <Switch checked={hasSAHExt} onCheckedChange={setHasSAHExt} />
+                          </div>
                         </div>
-                      </div>
-                    ) : (
-                      <div className="space-y-3">
+
                         <div>
-                          <div className="text-sm font-medium text-slate-800 mb-2">Tip</div>
-                          <Segmented
-                            value={intraSubtype}
-                            onChange={(v) => setIntraSubtype(v as IntraAxialSubtype)}
-                            options={[
-                              { key: "ICH", label: "ICH" },
-                              { key: "HEM_CONTUSION", label: "Hemorajik kontüzyon" },
-                              { key: "SAH", label: "SAH" },
-                              { key: "IVH", label: "IVH" },
-                            ]}
-                          />
-                        </div>
-
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                          <div>
-                            <div className="text-xs text-slate-500 mb-1">Taraf</div>
-                            <Segmented
-                              value={hemSide}
-                              onChange={(v) => setHemSide(v as Side)}
-                              options={[
-                                { key: "R", label: "Sağ" },
-                                { key: "L", label: "Sol" },
-                                { key: "Bilateral", label: "Bilat" },
-                                { key: "Midline", label: "Orta" },
-                              ]}
-                            />
-                          </div>
-
-                          <div>
-                            <div className="text-xs text-slate-500 mb-1">Bölge</div>
-                            <Segmented
-                              value={hemRegion}
-                              onChange={(v) => setHemRegion(v as BrainRegion)}
-                              options={[
-                                { key: "Frontal", label: "Frontal" },
-                                { key: "Parietal", label: "Parietal" },
-                                { key: "Temporal", label: "Temporal" },
-                                { key: "Occipital", label: "Occipital" },
-                                { key: "Basal ganglia", label: "Bazal g." },
-                                { key: "Thalamus", label: "Talamus" },
-                                { key: "Brainstem", label: "Beyin sapı" },
-                                { key: "Cerebellum", label: "Serebellum" },
-                                { key: "Intraventricular", label: "IVH" },
-                                { key: "Diffuse", label: "Difüz" },
-                              ]}
-                            />
-                          </div>
-                        </div>
-
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                          <div>
-                            <div className="text-xs text-slate-500 mb-1">Maks çap (cm)</div>
-                            <Input value={maxDiamCm} onChange={(e) => setMaxDiamCm(e.target.value)} placeholder="örn: 2.5" />
-                          </div>
-                          <div>
-                            <div className="text-xs text-slate-500 mb-1">Midline shift (mm)</div>
-                            <Input value={midlineShiftMm} onChange={(e) => setMidlineShiftMm(e.target.value)} placeholder="örn: 6" />
-                          </div>
-                          <div>
-                            <div className="text-xs text-slate-500 mb-1">Ek evre/sinyal ipucu (ops.)</div>
-                            <Input value={bloodAgeHint} onChange={(e) => setBloodAgeHint(e.target.value)} placeholder="örn: subakut lehine" />
-                          </div>
-                        </div>
-
-                        <div className="rounded-lg border p-3">
-                          <div className="flex items-center justify-between gap-2 mb-2">
-                            <div>
-                              <div className="text-sm font-medium">Hızlı hacim tahmini (ABC/2)</div>
-                              <div className="text-xs text-slate-500">İntraparenkimal hematom için (cm). Yaklaşık mL ≈ cm³.</div>
-                            </div>
-                            <Badge variant="secondary">{abcVolumeMl ? `${abcVolumeMl} mL` : "—"}</Badge>
-                          </div>
-
-                          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                            <div>
-                              <div className="text-xs text-slate-500 mb-1">A (en uzun çap, cm)</div>
-                              <Input value={abcAcm} onChange={(e) => setAbcAcm(e.target.value)} placeholder="örn: 4.2" />
-                            </div>
-                            <div>
-                              <div className="text-xs text-slate-500 mb-1">B (A'ya dik, cm)</div>
-                              <Input value={abcBcm} onChange={(e) => setAbcBcm(e.target.value)} placeholder="örn: 2.8" />
-                            </div>
-                            <div>
-                              <div className="text-xs text-slate-500 mb-1">C (kalınlık, cm)</div>
-                              <Input value={abcCcm} onChange={(e) => setAbcCcm(e.target.value)} placeholder="örn: 3.0" />
-                            </div>
-                          </div>
-                        </div>
-
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                          <div className="flex items-center justify-between rounded-lg border p-3">
-                            <div className="text-sm">
-                              <div className="font-medium">Eşlik eden SAH</div>
-                              <div className="text-xs text-slate-500">Sulkal/sisternal yayılım</div>
-                            </div>
-                            <Switch checked={hasSAHExt} onCheckedChange={setHasSAHExt} />
-                          </div>
-                          <div className="flex items-center justify-between rounded-lg border p-3">
-                            <div className="text-sm">
-                              <div className="font-medium">Eşlik eden IVH</div>
-                              <div className="text-xs text-slate-500">Ventriküler yayılım</div>
-                            </div>
-                            <Switch checked={hasIVHExt} onCheckedChange={setHasIVHExt} />
-                          </div>
+                          <div className="text-xs font-medium text-slate-600 mb-1">Evre / sinyal ipucu (opsiyonel)</div>
+                          <Input value={bloodAgeHint} onChange={(e) => setBloodAgeHint(e.target.value)} placeholder="örn: subakut lehine" />
                         </div>
                       </div>
-                    )}
+                    </div>
                   </div>
                 )}
 
-                {/* FLOW: MASS/INFECTION */}
+                {/* FLOW: MASS/INF */}
                 {flow === "MASS_INF" && (
                   <div className="rounded-xl border p-4 space-y-4">
-                    <SectionTitle>Kitle / Enfeksiyon alt seçimler</SectionTitle>
+                    <SectionTitle>Kitle / Enfeksiyon</SectionTitle>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                       <div>
-                        <div className="text-xs text-slate-500 mb-1">Lezyon sayısı</div>
+                        <div className="text-xs font-medium text-slate-600 mb-2">Lezyon sayısı</div>
                         <Segmented
                           value={lesionCount}
-                          onChange={(v) => setLesionCount(v as any)}
+                          onChange={(v) => setLesionCount(v as "SOLITARY" | "MULTIPLE")}
                           options={[
                             { key: "SOLITARY", label: "Soliter" },
                             { key: "MULTIPLE", label: "Multipl" },
@@ -1414,10 +1236,10 @@ export default function Page() {
                       </div>
 
                       <div>
-                        <div className="text-xs text-slate-500 mb-1">Kompartman</div>
+                        <div className="text-xs font-medium text-slate-600 mb-2">Kompartman</div>
                         <Segmented
                           value={lesionCompartment}
-                          onChange={(v) => setLesionCompartment(v as any)}
+                          onChange={(v) => setLesionCompartment(v as "EXTRAAXIAL" | "INTRAAXIAL")}
                           options={[
                             { key: "INTRAAXIAL", label: "İntraaksiyel" },
                             { key: "EXTRAAXIAL", label: "Ekstraaksiyel" },
@@ -1429,15 +1251,15 @@ export default function Page() {
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                       <div className="flex items-center justify-between rounded-lg border p-3">
                         <div className="text-sm">
-                          <div className="font-medium">Ring tutulum</div>
-                          <div className="text-xs text-slate-500">GBM/met/apse ayrımı</div>
+                          <div className="font-medium">Ring-enhancing</div>
+                          <div className="text-xs text-slate-500">Metastaz/apse/nekrotik tümör</div>
                         </div>
                         <Switch checked={ringEnhancing} onCheckedChange={setRingEnhancing} />
                       </div>
 
                       <div className="flex items-center justify-between rounded-lg border p-3">
                         <div className="text-sm">
-                          <div className="font-medium">Difüzyon kısıtlılığı</div>
+                          <div className="font-medium">Belirgin restriksiyon</div>
                           <div className="text-xs text-slate-500">Apse/lenfoma vb.</div>
                         </div>
                         <Switch checked={diffRestriction} onCheckedChange={setDiffRestriction} />
@@ -1445,8 +1267,8 @@ export default function Page() {
 
                       <div className="flex items-center justify-between rounded-lg border p-3">
                         <div className="text-sm">
-                          <div className="font-medium">Belirgin restriksiyon (güçlü)</div>
-                          <div className="text-xs text-slate-500">Lenfoma/apse lehine</div>
+                          <div className="font-medium">Çok belirgin restriksiyon</div>
+                          <div className="text-xs text-slate-500">PCNSL/Apse lehine güçlendirir</div>
                         </div>
                         <Switch checked={restrictedStrong} onCheckedChange={setRestrictedStrong} />
                       </div>
@@ -1454,7 +1276,7 @@ export default function Page() {
                       <div className="flex items-center justify-between rounded-lg border p-3">
                         <div className="text-sm">
                           <div className="font-medium">Belirgin ödem</div>
-                          <div className="text-xs text-slate-500">Kitle etkisi/vasojenik ödem</div>
+                          <div className="text-xs text-slate-500">Metastaz/GBM vb.</div>
                         </div>
                         <Switch checked={markedEdema} onCheckedChange={setMarkedEdema} />
                       </div>
@@ -1472,7 +1294,7 @@ export default function Page() {
                     {lesionCompartment === "EXTRAAXIAL" && (
                       <div className="rounded-xl border p-4 space-y-3">
                         <div className="flex items-center justify-between">
-                          <div className="text-sm font-semibold text-slate-700">Meningiom işaretleri</div>
+                          <div className="text-sm font-semibold text-slate-700">Meningiom lehine ipuçları</div>
                           <Badge variant="secondary">Güçlendirme</Badge>
                         </div>
 
@@ -1487,8 +1309,8 @@ export default function Page() {
 
                           <div className="flex items-center justify-between rounded-lg border p-3">
                             <div className="text-sm">
-                              <div className="font-medium">Hiperostozis</div>
-                              <div className="text-xs text-slate-500">Komşu kemik değişikliği</div>
+                              <div className="font-medium">Hiperostoz</div>
+                              <div className="text-xs text-slate-500">Kemiğe reaksiyon</div>
                             </div>
                             <Switch checked={hyperostosis} onCheckedChange={setHyperostosis} />
                           </div>
@@ -1547,6 +1369,147 @@ export default function Page() {
                   </div>
                 )}
 
+                {/* CVST details (CTV/MRV) */}
+                {(ctxCVSTSusp || (showCTPanel && ctPreset === "CTV")) && (
+                  <div className="rounded-xl border p-4 space-y-3">
+                    <SectionTitle>CVST (venöz sinüs trombozu) detayları</SectionTitle>
+                    <div className="text-xs text-slate-500">
+                      Bu alan, CVST şüphesi veya CTV seçili olduğunda rapora "nereden nereye" şeklinde anatomik uzanımı otomatik yazdırmak için kullanılır.
+                    </div>
+
+                    <div className="space-y-2">
+                      <div className="text-xs font-medium text-slate-600">Tutulum sinüs(ler)i (çoklu seçim)</div>
+                      <div className="flex flex-wrap gap-2">
+                        {(
+                          [
+                            "Superior sagittal sinus",
+                            "Straight sinus",
+                            "Transverse sinus",
+                            "Sigmoid sinus",
+                            "Internal jugular vein",
+                            "Deep venous system",
+                            "Cortical veins",
+                          ] as VenousSinus[]
+                        ).map((s) => (
+                          <Button
+                            key={s}
+                            size="sm"
+                            variant={cvstSinuses.includes(s) ? "default" : "outline"}
+                            className="rounded-full"
+                            onClick={() => setCvstSinuses((prev) => toggleInArray(prev, s))}
+                          >
+                            {s === "Superior sagittal sinus"
+                              ? "SSS"
+                              : s === "Straight sinus"
+                              ? "Straight"
+                              : s === "Transverse sinus"
+                              ? "Transvers"
+                              : s === "Sigmoid sinus"
+                              ? "Sigmoid"
+                              : s === "Internal jugular vein"
+                              ? "IJV"
+                              : s === "Deep venous system"
+                              ? "Derin sistem"
+                              : "Kortikal ven"}
+                          </Button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <div className="rounded-lg border p-3">
+                        <div className="text-xs font-medium text-slate-600 mb-2">Laterality</div>
+                        <div className="flex flex-wrap gap-2">
+                          {([
+                            { key: "Midline", label: "Orta hat" },
+                            { key: "R", label: "Sağ" },
+                            { key: "L", label: "Sol" },
+                            { key: "Bilateral", label: "Bilateral" },
+                          ] as { key: CVSTLaterality; label: string }[]).map((o) => (
+                            <Button
+                              key={o.key}
+                              size="sm"
+                              variant={cvstLaterality === o.key ? "default" : "outline"}
+                              className="rounded-full"
+                              onClick={() => setCvstLaterality(o.key)}
+                            >
+                              {o.label}
+                            </Button>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="rounded-lg border p-3">
+                        <div className="text-xs font-medium text-slate-600 mb-2">Dolum defekti / oklüzyon</div>
+                        <div className="flex flex-wrap gap-2">
+                          {([
+                            { key: "Partial", label: "Parsiyel" },
+                            { key: "Complete", label: "Tam" },
+                          ] as { key: CVSTOcclusion; label: string }[]).map((o) => (
+                            <Button
+                              key={o.key}
+                              size="sm"
+                              variant={cvstOcclusion === o.key ? "default" : "outline"}
+                              className="rounded-full"
+                              onClick={() => setCvstOcclusion(o.key)}
+                            >
+                              {o.label}
+                            </Button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <div className="flex items-center justify-between rounded-lg border p-3">
+                        <div className="text-sm">
+                          <div className="font-medium">Kortikal ven tutulumu</div>
+                          <div className="text-xs text-slate-500">Seçilmiş olgularda</div>
+                        </div>
+                        <Switch checked={cvstCorticalVeinInvolvement} onCheckedChange={setCvstCorticalVeinInvolvement} />
+                      </div>
+
+                      <div className="flex items-center justify-between rounded-lg border p-3">
+                        <div className="text-sm">
+                          <div className="font-medium">Venöz infarkt</div>
+                          <div className="text-xs text-slate-500">± hemorajik dönüşüm</div>
+                        </div>
+                        <Switch checked={cvstVenousInfarct} onCheckedChange={setCvstVenousInfarct} />
+                      </div>
+
+                      <div className="flex items-center justify-between rounded-lg border p-3">
+                        <div className="text-sm">
+                          <div className="font-medium">Hemorajik venöz infarkt</div>
+                          <div className="text-xs text-slate-500">Venöz infarkt seçiliyse anlamlı</div>
+                        </div>
+                        <Switch
+                          checked={cvstHemorrhagicVenousInfarct}
+                          onCheckedChange={(v) => {
+                            setCvstHemorrhagicVenousInfarct(v);
+                            if (v) setCvstVenousInfarct(true);
+                          }}
+                        />
+                      </div>
+
+                      <div className="flex items-center justify-between rounded-lg border p-3">
+                        <div className="text-sm">
+                          <div className="font-medium">Dense sinus / cord sign</div>
+                          <div className="text-xs text-slate-500">NCCT ipucu</div>
+                        </div>
+                        <Switch checked={cvstHintDenseSinus} onCheckedChange={setCvstHintDenseSinus} />
+                      </div>
+
+                      <div className="flex items-center justify-between rounded-lg border p-3">
+                        <div className="text-sm">
+                          <div className="font-medium">Empty delta / dolum defekti</div>
+                          <div className="text-xs text-slate-500">Kontrast/CTV ipucu</div>
+                        </div>
+                        <Switch checked={cvstHintEmptyDelta} onCheckedChange={setCvstHintEmptyDelta} />
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 {/* Incidental */}
                 <Card className="rounded-2xl shadow-sm">
                   <CardHeader className="pb-2">
@@ -1579,33 +1542,32 @@ export default function Page() {
                       Kopyala
                     </Button>
                   </div>
-                  <div className="text-xs text-slate-500">
-                    Seçimlere göre canlı güncellenir (kural tabanlı). {copyOk ? <span className="ml-2">{copyOk}</span> : null}
-                  </div>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div>
-                    <div className="text-xs text-slate-500 mb-1">Final (tek metin)</div>
-                    <pre className="whitespace-pre-wrap rounded-xl border p-3 text-sm leading-5">{finalReport}</pre>
+                    <div className="text-xs text-slate-500 mb-2">Final rapor metni</div>
+                    <Textarea value={finalReport} readOnly className="min-h-[220px] bg-white" />
                   </div>
 
                   <div>
-                    <div className="text-xs text-slate-500 mb-2">DDX (Top) + Why score</div>
+                    <div className="text-xs text-slate-500 mb-2">Ayırıcı tanılar</div>
                     <div className="space-y-2">
                       {ddx.length ? (
                         ddx.map((d) => (
                           <div key={d.title} className="rounded-xl border p-3">
-                            <div className="flex items-center justify-between gap-2">
-                              <div className="font-medium text-sm">{d.title}</div>
+                            <div className="flex items-center justify-between">
+                              <div className="text-sm font-medium text-slate-800">{d.title}</div>
                               <Badge variant={d.level === "Yüksek" ? "default" : d.level === "Orta" ? "secondary" : "outline"}>
                                 {d.level}
                               </Badge>
                             </div>
-                            <ul className="mt-2 list-disc pl-5 text-xs text-slate-600 space-y-1">
-                              {d.why.filter(Boolean).slice(0, 5).map((w, i) => (
-                                <li key={i}>{w}</li>
-                              ))}
-                            </ul>
+                            {d.why?.length ? (
+                              <ul className="mt-2 list-disc pl-5 text-xs text-slate-600 space-y-1">
+                                {d.why.map((w, i) => (
+                                  <li key={i}>{w}</li>
+                                ))}
+                              </ul>
+                            ) : null}
                           </div>
                         ))
                       ) : (
@@ -1666,6 +1628,33 @@ export default function Page() {
                     </div>
                   )}
 
+                  {/* CVST hint box */}
+                  {organ === "brain" && (ctxCVSTSusp || ((mode === "CT" || mode === "CTMR") && ctPreset === "CTV")) && (
+                    <div>
+                      <div className="text-xs text-slate-500 mb-2">İpucu / CVST pattern destek</div>
+                      <div className="rounded-xl border p-3 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <div className="text-sm font-medium">CVST (dural venöz sinüs trombozu)</div>
+                          <Badge variant={((mode === "CT" || mode === "CTMR") && ctPreset === "CTV") ? "default" : "outline"}>
+                            {((mode === "CT" || mode === "CTMR") && ctPreset === "CTV") ? "CTV seçili" : "Klinik şüphe"}
+                          </Badge>
+                        </div>
+                        <div className="text-xs text-slate-600">
+                          Dense sinus/cord sign (NCCT) + CTV'de dolum defekti/empty delta + venöz infarkt (± hemorajik) ipucu olabilir.
+                        </div>
+                        <ul className="list-disc pl-5 text-xs text-slate-600 space-y-1">
+                          <li className={cvstHintDenseSinus ? "font-medium" : ""}>NCCT: dense sinus / cord sign</li>
+                          <li className={cvstHintEmptyDelta ? "font-medium" : ""}>CECT/CTV: empty delta / dolum defekti</li>
+                          <li className={cvstVenousInfarct ? "font-medium" : ""}>Venöz infarkt (hemorajik dönüşüm olabilir)</li>
+                          <li>Konveksite SAH / hemorajik venöz infarkt eşlik edebilir</li>
+                        </ul>
+                        <div className="text-xs text-slate-600">
+                          Önerilen: CTV (alternatif: MRV) + DWI/ADC + SWI/T2*.
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
                   <div>
                     <div className="text-xs text-slate-500 mb-2">Öneriler</div>
                     <div className="space-y-2">
@@ -1695,6 +1684,7 @@ export default function Page() {
                   <div>• Kanama → ölçüm alanları (kalınlık, MLS, çap) geliyor mu?</div>
                   <div>• Travma → alt seçimler dolu mu?</div>
                   <div>• Kitle/Enfeksiyon → BT’de de alt seçimler görünüyor mu?</div>
+                  <div>• CVST → sinüs seçimi + parsiyel/tam + rapora yazıyor mu?</div>
                 </CardContent>
               </Card>
             </div>
