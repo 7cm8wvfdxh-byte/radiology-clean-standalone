@@ -136,6 +136,7 @@ export default function Page() {
   // -------------------------
   const [traumaSkullFx, setTraumaSkullFx] = useState<boolean>(false);
   const [traumaBasilarFx, setTraumaBasilarFx] = useState<boolean>(false);
+  const [traumaVascularSusp, setTraumaVascularSusp] = useState<boolean>(false);
   const [traumaDAI, setTraumaDAI] = useState<boolean>(false);
   const [traumaContusion, setTraumaContusion] = useState<boolean>(true);
   const [traumaPneumocephalus, setTraumaPneumocephalus] = useState<boolean>(false);
@@ -207,6 +208,123 @@ export default function Page() {
 
   const meningiomaHigh = meningiomaScore >= 3;
   const lymphomaHigh = lymphomaScore >= 3;
+
+  // -------------------------
+  // Protocol assistant (suggest & one-click apply)
+  // Goal: If user chooses a flow, auto-suggest the most useful add-ons
+  // (CTA/CTV/CTP, MR contrast, DWI/SWI/perfusion) without forcing it.
+  // -------------------------
+  const protocolAssistant = useMemo(() => {
+    const tips: { title: string; why: string; actions?: { label: string; apply: () => void }[] }[] = [];
+
+    // Helper actions (safe: only adjust relevant toggles)
+    const actions: { label: string; apply: () => void }[] = [];
+
+    // MASS/INF + MR present: DWI & SWI are core sequences; contrast is usually helpful when feasible.
+    if ((mode === "MR" || mode === "CTMR") && flow === "MASS_INF") {
+      if (!mrDWI) actions.push({ label: "DWI/ADC'yi aç", apply: () => setMrDWI(true) });
+      if (!mrSWI) actions.push({ label: "SWI/T2*'yi aç", apply: () => setMrSWI(true) });
+      if (mrContrast !== "YES") actions.push({ label: "MR kontrastı aç", apply: () => setMrContrast("YES") });
+    }
+
+    // CTA suggestions (selected scenarios)
+    if ((mode === "CT" || mode === "CTMR") && (flow === "TRAUMA" || flow === "HEMORRHAGE")) {
+      // Trauma with basilar fx / suspected vascular injury
+      if (flow === "TRAUMA" && (traumaBasilarFx || traumaVascularSusp)) {
+        if (ctPreset !== "CTA") {
+          actions.push({ label: "BT preset → CTA", apply: () => setCtPreset("CTA") });
+        }
+        if (!ctNeckCTA) actions.push({ label: "CTA head+neck'i aç", apply: () => setCtNeckCTA(true) });
+        tips.push({
+          title: "Travmada vasküler yaralanma şüphesi",
+          why: "Baziler fraktür veya vasküler yaralanma şüphesinde seçilmiş olguda CTA (gerekirse head+neck) ile değerlendirme düşünülebilir.",
+        });
+      }
+      // Non-traumatic SAH: CTA for aneurysm screen
+      const sahSelected =
+        (flow === "HEMORRHAGE" && ((hemType === "EXTRAAXIAL" && extraSubtype === "SAH") || (hemType === "INTRAAXIAL" && intraSubtype === "SAH")));
+      if (sahSelected && !ctxTraumaHx) {
+        if (ctPreset !== "CTA") {
+          actions.push({ label: "BT preset → CTA", apply: () => setCtPreset("CTA") });
+        }
+        tips.push({
+          title: "Non-travmatik SAH: anevrizma şüphesi",
+          why: "Travma öyküsü yoksa SAH paterni anevrizmal etyoloji açısından önemlidir; uygun olguda CTA ile tarama düşünülebilir.",
+        });
+      }
+      // Venous sinus thrombosis suspicion isn't explicitly modeled yet; CTV can be toggled manually.
+    }
+
+    // MASS/INF on CT-only: if NCCT, suggest CECT; also suggest adding MR.
+    if (flow === "MASS_INF" && mode === "CT") {
+      if (ctPreset === "NCCT") {
+        actions.push({ label: "BT preset → CECT", apply: () => setCtPreset("CECT") });
+      }
+      tips.push({
+        title: "Kitle/Enfeksiyon: CECT + MR önerisi",
+        why: "BT'de NCCT sınırlı kalabilir; mümkünse kontrastlı BT (CECT) ve ek olarak MR (kontrast + DWI/SWI, seçilmiş olguda ± perfüzyon) ayırıcı tanıya güçlü katkı sağlar.",
+        actions: [
+          {
+            label: "Mod → BT+MR",
+            apply: () => {
+              setMode("CTMR");
+              // keep CT choice; ensure core MR toggles are enabled for MASS/INF
+              setMrContrast("YES");
+              setMrDWI(true);
+              setMrSWI(true);
+            },
+          },
+        ],
+      });
+    }
+
+    // Perfusion suggestions (selected tumor scenarios; not mandatory)
+    if ((mode === "MR" || mode === "CTMR") && flow === "MASS_INF") {
+      if (!mrPerfusion) {
+        tips.push({
+          title: "Seçilmiş tümör olgularında perfüzyon",
+          why: "Yüksek dereceli glial tümör, nüks/psödoprogresyon ayrımı gibi senaryolarda yardımcı olabilir.",
+          actions: [{ label: "MR perfüzyon'u aç", apply: () => setMrPerfusion(true) }],
+        });
+      }
+    }
+
+    // Attach actions if we collected any
+    if (actions.length) {
+      tips.unshift({
+        title: "Protokol asistanı",
+        why: "Seçili akış ve klinik bağlama göre en sık kullanılan ek protokol/sekans önerileri.",
+        actions,
+      });
+    }
+
+    return tips.slice(0, 3);
+  }, [
+    mode,
+    flow,
+    mrDWI,
+    mrContrast,
+    mrSWI,
+    mrPerfusion,
+    hemorrhagicComponent,
+    traumaDAI,
+    ctPreset,
+    ctNeckCTA,
+    traumaBasilarFx,
+    traumaVascularSusp,
+    ctxTraumaHx,
+    hemType,
+    extraSubtype,
+    intraSubtype,
+  ]);
+
+  const applyAllProtocolAssistantActions = () => {
+    for (const tip of protocolAssistant) {
+      if (tip.actions?.length) {
+        for (const a of tip.actions) a.apply();
+      }
+    }
+  };
 
   // Free text
   const [incidental, setIncidental] = useState<string>("");
@@ -301,7 +419,7 @@ export default function Page() {
       if (traumaDAI && (mode === "MR" || mode === "CTMR")) {
         items.push({ title: "Diffüz aksonal yaralanma", why: ["MR (özellikle SWI) ile daha iyi"], level: "Orta" });
       }
-      if ((ctPreset === "CTA" || (mode === "CTMR" && ctPreset === "CTA")) && (traumaBasilarFx || ctNeckCTA)) {
+      if (ctPreset === "CTA" && (traumaBasilarFx || traumaVascularSusp || ctNeckCTA)) {
         items.push({ title: "Travmatik vasküler yaralanma (seçilmiş olguda)", why: ["CTA ile değerlendirme düşünülebilir"], level: "Düşük" });
       }
     }
@@ -405,6 +523,7 @@ export default function Page() {
     intraSubtype,
     traumaSkullFx,
     traumaBasilarFx,
+    traumaVascularSusp,
     traumaDAI,
     traumaContusion,
     traumaPneumocephalus,
@@ -444,8 +563,11 @@ export default function Page() {
       if (mode === "MR" || mode === "CTMR") {
         if (traumaDAI && !mrSWI) rec.push("DAI şüphesinde SWI/T2* eklenmesi faydalıdır.");
       }
-      if ((mode === "CT" || mode === "CTMR") && (traumaBasilarFx || traumaSkullFx)) {
-        if (ctPreset !== "CTA") rec.push("Vasküler yaralanma şüphesinde seçilmiş olguda CTA değerlendirilebilir.");
+      if ((mode === "CT" || mode === "CTMR") && (traumaBasilarFx || traumaVascularSusp || traumaSkullFx)) {
+        if (ctPreset !== "CTA") rec.push("Baziler fraktür / vasküler yaralanma şüphesinde seçilmiş olguda CTA (gerekirse head+neck) değerlendirilebilir.");
+        if (ctPreset === "CTA" && (traumaBasilarFx || traumaVascularSusp) && !ctNeckCTA) {
+          rec.push("Vasküler yaralanma şüphesinde CTA head+neck (seçilmiş olguda) düşünülebilir.");
+        }
       }
     }
 
@@ -470,6 +592,7 @@ export default function Page() {
     flow,
     mode,
     ctPreset,
+    ctNeckCTA,
     ctxTraumaHx,
     ctxAnticoag,
     extraSubtype,
@@ -478,6 +601,7 @@ export default function Page() {
     midlineShiftMm,
     traumaDAI,
     traumaBasilarFx,
+    traumaVascularSusp,
     traumaSkullFx,
     mrSWI,
     ringEnhancing,
@@ -594,6 +718,7 @@ export default function Page() {
     thicknessMm,
     midlineShiftMm,
     maxDiamCm,
+    abcVolumeMl,
     hasIVHExt,
     hasSAHExt,
     bloodAgeHint,
@@ -650,6 +775,7 @@ export default function Page() {
 
     setTraumaSkullFx(false);
     setTraumaBasilarFx(false);
+    setTraumaVascularSusp(false);
     setTraumaDAI(false);
     setTraumaContusion(true);
     setTraumaPneumocephalus(false);
@@ -893,6 +1019,49 @@ export default function Page() {
                   </div>
                 )}
 
+                {/* Protocol assistant */}
+                {protocolAssistant.length > 0 && (
+                  <div className="rounded-xl border p-4">
+                    <div className="flex items-center justify-between gap-3 mb-2">
+                      <SectionTitle>Protokol asistanı</SectionTitle>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="rounded-full"
+                        onClick={applyAllProtocolAssistantActions}
+                      >
+                        Önerilenleri uygula
+                      </Button>
+                    </div>
+                    <div className="space-y-3">
+                      {protocolAssistant.map((t, idx) => (
+                        <div key={idx} className="rounded-xl border p-3">
+                          <div className="text-sm font-medium text-slate-800">{t.title}</div>
+                          <div className="mt-1 text-xs text-slate-600">{t.why}</div>
+                          {t.actions?.length ? (
+                            <div className="mt-2 flex flex-wrap gap-2">
+                              {t.actions.slice(0, 6).map((a, i) => (
+                                <Button
+                                  key={i}
+                                  size="sm"
+                                  variant="secondary"
+                                  className="rounded-full"
+                                  onClick={a.apply}
+                                >
+                                  {a.label}
+                                </Button>
+                              ))}
+                            </div>
+                          ) : null}
+                        </div>
+                      ))}
+                    </div>
+                    <div className="mt-2 text-[11px] text-slate-500">
+                      Not: Bu öneriler pratik protokol kullanımını yansıtır; klinik endikasyona göre uyarlanmalıdır.
+                    </div>
+                  </div>
+                )}
+
                 {/* Flow */}
                 <div>
                   <SectionTitle>Akış</SectionTitle>
@@ -988,6 +1157,14 @@ export default function Page() {
                           <div className="text-xs text-slate-500">Vasküler yaralanma açısından seçilmiş olguda CTA düşünülebilir</div>
                         </div>
                         <Switch checked={traumaBasilarFx} onCheckedChange={setTraumaBasilarFx} />
+                      </div>
+
+                      <div className="flex items-center justify-between rounded-lg border p-3">
+                        <div className="text-sm">
+                          <div className="font-medium">Vasküler yaralanma şüphesi</div>
+                          <div className="text-xs text-slate-500">Diseksiyon/psödoanevrizma vb. şüphede CTA (gerekirse head+neck) önerilir</div>
+                        </div>
+                        <Switch checked={traumaVascularSusp} onCheckedChange={setTraumaVascularSusp} />
                       </div>
 
                       <div className="flex items-center justify-between rounded-lg border p-3">
@@ -1444,8 +1621,8 @@ export default function Page() {
                       <div className="rounded-xl border p-3 space-y-3">
                         <div className="flex items-center justify-between">
                           <div className="text-sm font-medium">Meningiom</div>
-                          <Badge variant={isMeningiomaHigh ? "default" : "outline"}>
-                            {isMeningiomaHigh ? "Yüksek olasılık" : `Skor ${meningiomaScore}/4`}
+                          <Badge variant={meningiomaHigh ? "default" : "outline"}>
+                            {meningiomaHigh ? "Yüksek olasılık" : `Skor ${meningiomaScore}/4`}
                           </Badge>
                         </div>
                         <div className="text-xs text-slate-600">
@@ -1462,8 +1639,8 @@ export default function Page() {
 
                         <div className="flex items-center justify-between">
                           <div className="text-sm font-medium">Lenfoma (PCNSL)</div>
-                          <Badge variant={isLymphomaHigh ? "default" : "outline"}>
-                            {isLymphomaHigh ? "Yüksek olasılık" : `Skor ${lymphomaScore}/4`}
+                          <Badge variant={lymphomaHigh ? "default" : "outline"}>
+                            {lymphomaHigh ? "Yüksek olasılık" : `Skor ${lymphomaScore}/4`}
                           </Badge>
                         </div>
                         <div className="text-xs text-slate-600">
