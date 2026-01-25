@@ -121,5 +121,40 @@
   }
   body {
     @apply bg-background text-foreground;
+    background-image:
+      radial-gradient(at 100% 0%, oklch(0.95 0.02 280 / 0.3) 0%, transparent 50%),
+      radial-gradient(at 0% 100%, oklch(0.95 0.02 180 / 0.2) 0%, transparent 50%);
+    background-attachment: fixed;
+    min-height: 100vh;
+  }
+}
+
+/* Smooth transitions for interactive elements */
+@layer utilities {
+  .transition-smooth {
+    @apply transition-all duration-300 ease-out;
+  }
+
+  /* Card hover lift effect */
+  .card-hover {
+    @apply transition-all duration-300;
+  }
+  .card-hover:hover {
+    @apply -translate-y-1 shadow-lg;
+  }
+
+  /* Gradient text */
+  .text-gradient {
+    @apply bg-clip-text text-transparent bg-gradient-to-r;
+  }
+
+  /* Glass morphism */
+  .glass {
+    @apply bg-white/80 backdrop-blur-md border border-white/20;
+  }
+
+  /* Focus ring animation */
+  .focus-ring {
+    @apply focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-slate-400;
   }
 }
