@@ -26,7 +26,12 @@ import { Textarea } from "@/components/ui/textarea";
 // Small UI helpers
 // -----------------------------
 function SectionTitle({ children }: { children: React.ReactNode }) {
-  return <div className="text-sm font-semibold text-slate-700 mb-2">{children}</div>;
+  return (
+    <div className="flex items-center gap-2 mb-3">
+      <div className="w-1 h-4 rounded-full bg-gradient-to-b from-violet-500 to-purple-600" />
+      <span className="text-sm font-semibold text-slate-800">{children}</span>
+    </div>
+  );
 }
 
 type TriToggleProps = {
@@ -752,46 +757,48 @@ export default function Page() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen">
       <div className="max-w-6xl mx-auto p-4 md:p-6">
-        <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between mb-4">
-          <div>
-            <div className="text-xs text-slate-500">radiology-clean-standalone</div>
-            <div className="text-xl font-semibold tracking-tight">Structured Radiology Assistant</div>
-          </div>
+        {/* Header */}
+        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-violet-600 to-purple-700 p-6 mb-6 shadow-lg shadow-violet-200/50">
+          <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZyBmaWxsPSJub25lIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiPjxnIGZpbGw9IiNmZmYiIGZpbGwtb3BhY2l0eT0iMC4xIj48cGF0aCBkPSJNMzYgMzRjMC0yLjIgMS44LTQgNC00czQgMS44IDQgNC0xLjggNC00IDQtNC0xLjgtNC00eiIvPjwvZz48L2c+PC9zdmc+')] opacity-30" />
+          <div className="relative flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div className="text-white">
+              <div className="text-violet-200 text-sm font-medium mb-1">Beyin Modülü</div>
+              <h1 className="text-2xl font-bold tracking-tight">Radiology Assistant</h1>
+              <p className="text-violet-100 text-sm mt-1">Travma • Kanama • Kitle/Enfeksiyon analizi</p>
+            </div>
 
-          <div className="flex flex-wrap gap-2">
-            <Button
-              variant={organ === "brain" ? "default" : "outline"}
-              className="rounded-full"
-              onClick={() => setOrgan("brain")}
-            >
-              Beyin
-            </Button>
-            <Button
-              variant={organ === "liver" ? "default" : "outline"}
-              className="rounded-full"
-              onClick={() => {
-                setOrgan("liver");
-                goLiver();
-              }}
-            >
-              Karaciğer (Route)
-            </Button>
-            <Button variant="outline" className="rounded-full" onClick={resetBrain}>
-              Reset
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                variant="secondary"
+                className="rounded-full bg-white/20 text-white border-0 hover:bg-white/30 backdrop-blur-sm"
+                onClick={resetBrain}
+              >
+                <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+                Sıfırla
+              </Button>
+            </div>
           </div>
         </div>
 
-        {copyOk ? <div className="text-xs text-emerald-700 mb-3">{copyOk}</div> : null}
+        {copyOk ? (
+          <div className="flex items-center gap-2 text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2 mb-4">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+            </svg>
+            {copyOk}
+          </div>
+        ) : null}
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Left: Inputs */}
           <div className="lg:col-span-2 space-y-6">
-            <Card className="rounded-2xl shadow-sm">
+            <Card className="rounded-2xl shadow-md border-0 bg-white/80 backdrop-blur-sm">
               <CardHeader className="pb-2">
-                <CardTitle className="text-base">Beyin Modülü</CardTitle>
+                <CardTitle className="text-lg font-semibold text-slate-800">Değerlendirme Parametreleri</CardTitle>
               </CardHeader>
               <CardContent className="space-y-5">
                 {/* Mode */}
@@ -1533,12 +1540,18 @@ export default function Page() {
 
           {/* Right: Sticky output */}
           <div className="lg:col-span-1">
-            <div className="sticky top-6 space-y-6">
-              <Card className="rounded-2xl shadow-sm">
-                <CardHeader className="pb-2">
+            <div className="sticky top-20 space-y-6">
+              <Card className="rounded-2xl shadow-lg border-0 bg-gradient-to-b from-white to-slate-50/80 backdrop-blur-sm">
+                <CardHeader className="pb-2 border-b border-slate-100">
                   <div className="flex items-center justify-between">
-                    <CardTitle className="text-lg">AI Çıktı</CardTitle>
-                    <Button size="sm" className="rounded-full" onClick={copyAll}>
+                    <div className="flex items-center gap-2">
+                      <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                      <CardTitle className="text-lg font-semibold text-slate-800">Rapor Çıktısı</CardTitle>
+                    </div>
+                    <Button size="sm" className="rounded-full bg-violet-600 hover:bg-violet-700 text-white shadow-sm" onClick={copyAll}>
+                      <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                      </svg>
                       Kopyala
                     </Button>
                   </div>
@@ -1675,16 +1688,21 @@ export default function Page() {
                 </CardContent>
               </Card>
 
-              <Card className="rounded-2xl shadow-sm">
+              <Card className="rounded-2xl shadow-md border-0 bg-slate-800 text-white">
                 <CardHeader className="pb-2">
-                  <CardTitle className="text-base">Hızlı kontrol</CardTitle>
+                  <CardTitle className="text-base text-slate-100 flex items-center gap-2">
+                    <svg className="w-4 h-4 text-violet-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    Hızlı Kontrol
+                  </CardTitle>
                 </CardHeader>
-                <CardContent className="text-sm text-slate-700 space-y-2">
-                  <div>• BT / MR / BT+MR seçimi çalışıyor mu?</div>
-                  <div>• Kanama → ölçüm alanları (kalınlık, MLS, çap) geliyor mu?</div>
-                  <div>• Travma → alt seçimler dolu mu?</div>
-                  <div>• Kitle/Enfeksiyon → BT’de de alt seçimler görünüyor mu?</div>
-                  <div>• CVST → sinüs seçimi + parsiyel/tam + rapora yazıyor mu?</div>
+                <CardContent className="text-sm text-slate-300 space-y-2">
+                  <div className="flex items-start gap-2"><span className="text-violet-400">•</span> BT / MR / BT+MR seçimi</div>
+                  <div className="flex items-start gap-2"><span className="text-violet-400">•</span> Kanama ölçümleri (kalınlık, MLS)</div>
+                  <div className="flex items-start gap-2"><span className="text-violet-400">•</span> Travma alt seçimleri</div>
+                  <div className="flex items-start gap-2"><span className="text-violet-400">•</span> Kitle/Enfeksiyon parametreleri</div>
+                  <div className="flex items-start gap-2"><span className="text-violet-400">•</span> CVST sinüs seçimi</div>
                 </CardContent>
               </Card>
             </div>
@@ -1692,8 +1710,15 @@ export default function Page() {
         </div>
 
         {/* Footer note */}
-        <div className="mt-8 text-xs text-slate-500">
-          Kaynak uyumu (özet): Akut kanama/travmada BT temel; seçilmiş olguda CTA/CTV/CTP gibi ek protokoller klinik endikasyona göre kullanılır.
+        <div className="mt-8 rounded-xl bg-slate-100/80 border border-slate-200 px-4 py-3">
+          <div className="flex items-start gap-2">
+            <svg className="w-4 h-4 text-slate-400 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <p className="text-xs text-slate-600">
+              <span className="font-medium text-slate-700">Not:</span> Akut kanama/travmada BT temel görüntüleme yöntemidir. Seçilmiş olgularda CTA/CTV/CTP gibi ek protokoller klinik endikasyona göre değerlendirilir.
+            </p>
+          </div>
         </div>
       </div>
     </div>

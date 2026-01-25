@@ -3,8 +3,8 @@ import type { Metadata } from "next";
 import TopNav from "@/components/TopNav";
 
 export const metadata: Metadata = {
-  title: "radiology-clean",
-  description: "Structured Radiology Assistant",
+  title: "RadAssist - Radiology Assistant",
+  description: "Yapılandırılmış Radyoloji Raporlama ve Karar Destek Sistemi",
 };
 
 export default function RootLayout({
@@ -12,9 +12,9 @@ export default function RootLayout({
 }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="tr">
-      <body className="min-h-screen bg-gray-50">
+      <body className="min-h-screen antialiased">
         <TopNav />
-        <main className="mx-auto max-w-6xl px-4 py-6">{children}</main>
+        <main>{children}</main>
       </body>
     </html>
   );
